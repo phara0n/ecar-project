@@ -1,103 +1,30 @@
 # ECAR Garage Management System
 
 ## Overview
-ECAR Garage Management System is a comprehensive solution for automotive workshops in Tunisia. It consists of:
-- Backend API (Django + DRF)
-- Admin Web Interface (React + Vite + Ant Design)
-- Mobile App (React Native)
 
-## Features
+The ECAR Garage Management System is a self-hosted solution for Tunisian automotive workshops. It provides a comprehensive system for managing garage operations, customers, vehicles, services, and invoicing.
 
-- Customer management with profile and vehicle information
-- Service scheduling and tracking
-- Appointment booking system
-- Invoice generation with PDF export
-- Email notifications for service updates
-- SMS notifications for service completion and invoices
-- Admin dashboard for garage management
-- API with JWT authentication and rate limiting
-- Redis caching for optimized performance
-- Data encryption for sensitive information
-- Automated database backup system
+## System Components
 
-## Tech Stack
-
-- **Backend**: Django/Django REST Framework
-- **Database**: PostgreSQL (Production) / SQLite (Development)
+- **Backend API**: Django + Django REST Framework (Python)
+- **Database**: PostgreSQL with PgBouncer connection pooling
 - **Caching**: Redis
-- **Authentication**: JWT (JSON Web Tokens)
-- **Containerization**: Docker and Docker Compose
-- **CI/CD**: GitHub Actions
-- **PDF Generation**: ReportLab
-- **Email**: Django SMTP integration
+- **Web Server**: Nginx (production)
+- **Mobile App**: React Native (planned)
+- **Admin Interface**: React + Vite (planned)
 
-## Setup Instructions
+## Current Status
 
-### Prerequisites
-- Docker and Docker Compose
-- Python 3.12 (for local development)
-- Git
+- ✅ Docker environment with PgBouncer connection pooling
+- ✅ Django backend with initial models and API endpoints
+- ✅ PostgreSQL database with proper connection pooling
+- ✅ Redis for caching
+- ✅ Nginx for serving the application
+- ✅ Utility scripts for local development
 
-### Installation
+## Getting Started
 
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd ecar_project
-   ```
-
-2. Copy the environment template and configure variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-3. Start the services using Docker Compose:
-   ```bash
-   docker-compose up -d
-   ```
-
-4. Run migrations:
-   ```bash
-   docker-compose exec backend python manage.py migrate
-   ```
-
-5. Create a superuser:
-   ```bash
-   docker-compose exec backend python manage.py createsuperuser
-   ```
-
-## Development Setup
-
-### Local Environment (Recommended for Development)
-For faster development and debugging, a local environment setup is recommended:
-
-1. Check prerequisites:
-   ```bash
-   ./check_local_services.sh
-   ```
-
-2. Set up the local environment:
-   ```bash
-   ./setup_local_env.sh
-   ```
-
-3. Start the development server:
-   ```bash
-   ./run_local_server.sh
-   ```
-
-4. Manage the database:
-   ```bash
-   ./manage_local_db.sh [command]
-   ```
-   
-   Available commands: migrate, reset, shell, backup, restore, showmigrations, check
-
-For detailed instructions, see the [Local Environment Quick Reference](./docs/local_env_quickstart.md).
-
-### Docker Environment (Recommended for Production)
-The project can also be run using Docker Compose:
+### Docker Setup (Recommended)
 
 1. Start all services:
    ```bash
@@ -109,88 +36,68 @@ The project can also be run using Docker Compose:
    docker-compose ps
    ```
 
-3. View logs:
+3. Access the Django admin:
+   - URL: http://localhost:8000/admin
+   - Username: admin
+   - Password: admin123
+
+### Local Development
+
+1. Set up local environment:
    ```bash
-   docker-compose logs -f [service_name]
+   ./setup_local_env.sh
+   ```
+
+2. Run with PgBouncer:
+   ```bash
+   ./run_with_pgbouncer.sh
    ```
 
 ## Documentation
 
-Comprehensive documentation is available in the `docs` directory:
+Comprehensive documentation is available in the `docs/` directory:
 
-- [Local Development Setup](./docs/local_setup.md)
-- [Local Environment Quick Reference](./docs/local_env_quickstart.md)
-- [Troubleshooting Guide](./docs/troubleshooting.md)
-- [Project Status](./docs/for_mehd.md)
+- `docs/setup_guide.md`: Complete setup guide
+- `docs/for_mehd.md`: Current status summary
+- `docs/connection_pooling_setup.md`: PgBouncer connection pooling setup
 
-## Project Structure
+## GitHub Repository Setup
 
-```
-ecar_project/
-├── backend/              # Django backend API
-├── frontend/             # React admin interface (planned)
-├── mobile/               # React Native mobile app (planned)
-├── nginx/                # Nginx configuration
-├── docs/                 # Documentation
-├── docker-compose.yml    # Docker Compose configuration
-├── setup_local_env.sh    # Local environment setup script
-├── check_local_services.sh  # Service status check script
-├── run_local_server.sh   # Local development server script
-└── manage_local_db.sh    # Database management script
-```
+To push this code to GitHub:
 
-## Troubleshooting
+1. Create a new repository on GitHub:
+   - Go to https://github.com/new
+   - Name: ecar_project
+   - Description: ECAR Garage Management System
+   - Set to private if needed
 
-If you encounter issues, refer to the [Troubleshooting Guide](./docs/troubleshooting.md) or run:
+2. Push the code to GitHub:
+   ```bash
+   git push -u origin main
+   ```
 
-```bash
-./check_local_services.sh
-```
+3. For future changes, follow the ECAR branching strategy:
+   - `main`: Production-ready code (protected)
+   - `dev`: Active development branch
+   - Feature branches: `feature/<name>` (e.g., `feature/invoice-system`)
 
-## Contributors
+4. Use the Conventional Commits format for all commits:
+   ```bash
+   git commit -m "feat(auth): add JWT token refresh endpoint"
+   git commit -m "fix(api): correct invoice calculation"
+   git commit -m "docs(readme): update API documentation"
+   ```
 
-- ECAR Development Team
+## Development Guidelines
 
-## Key Features
+This project follows the ECAR Coding Rules:
 
-- User Authentication with JWT
-- Customer and Vehicle Management
-- Service and Maintenance Tracking
-- Parts Inventory Management
-- Invoice Generation with PDF Export
-- Email and SMS Notification System
-- Redis Caching for Performance
-- Data Encryption for Sensitive Information
-- Automated Database Backup System
+- Backend: Django + Django REST Framework
+- Authentication: JWT-based
+- Security: HTTPS, IP whitelisting for admin
+- Mobile: React Native with TypeScript
+- Admin: React + Vite with TypeScript
 
-## Getting Started
+## Contact
 
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file based on the provided `.env.example`. The system uses 
-environment variables for configuration, including database settings, email 
-configuration, and API keys.
-
-Key environment variable sections:
-- Database Configuration
-- Email Settings
-- JWT Authentication
-- Redis Configuration
-- Backup System Configuration
-- SMS API Settings (future)
-
-See `.env.example` for a complete list of available settings.
-
-## Documentation
-
-- [API Documentation](docs/api_documentation.md)
-- [Development Status](docs/development-status.md)
-- [Database Schema](docs/database_schema.md)
-- [Automated Backup System](docs/automated_backup_system.md)
-- [SMS Notification System](docs/sms_notification_system.md)
-- [Email Templates](docs/email_templates.md)
-- [PostgreSQL Migration](docs/postgresql_migration.md)
-- [PostgreSQL Performance](docs/postgresql_performance.md)
-- [PostgreSQL Backup & Recovery](docs/postgresql_backup_recovery.md) 
+For questions or support, contact: phara0ntn@gmail.com 
