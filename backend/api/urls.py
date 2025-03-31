@@ -4,7 +4,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     UserViewSet, CustomerViewSet, CarViewSet, ServiceViewSet,
     ServiceItemViewSet, InvoiceViewSet, NotificationViewSet,
-    RegisterView, ChangePasswordView, RateLimitedTokenObtainPairView
+    RegisterView, ChangePasswordView, RateLimitedTokenObtainPairView,
+    TokenRefreshEndpoint, test_token
 )
 
 router = DefaultRouter()
@@ -21,7 +22,8 @@ urlpatterns = [
     
     # Authentication endpoints
     path('token/', RateLimitedTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh/', TokenRefreshEndpoint.as_view(), name='token_refresh'),
+    path('token/test/', test_token, name='token_test'),
     path('register/', RegisterView.as_view(), name='register'),
     path('change-password/', ChangePasswordView.as_view(), name='change_password'),
 ] 

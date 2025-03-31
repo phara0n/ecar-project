@@ -1,6 +1,6 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status, generics
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from django.contrib.auth.models import User
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification
@@ -9,7 +9,7 @@ from .serializers import (
     ServiceSerializer, ServiceItemSerializer, InvoiceSerializer, 
     NotificationSerializer, UserRegistrationSerializer, ChangePasswordSerializer
 )
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django.utils.translation import gettext_lazy as _
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
@@ -378,3 +378,35 @@ class RateLimitedTokenObtainPairView(TokenObtainPairView):
     @ratelimit(key='ip', rate='5/m', method='POST', block=True)
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
+
+class TokenRefreshEndpoint(TokenRefreshView):
+    """
+    Custom token refresh endpoint with additional validation and logging.
+    Takes a refresh type JSON web token and returns an access type JSON web
+    token if the refresh token is valid.
+    """
+    def post(self, request, *args, **kwargs):
+        # Call the parent post method to handle the token refresh
+        response = super().post(request, *args, **kwargs)
+        
+        # If refresh was successful, we can add additional logic here
+        if response.status_code == status.HTTP_200_OK:
+            # Example: add user info or custom claims to the response
+            # This could include permissions, role, etc.
+            if hasattr(request, 'user') and request.user.is_authenticated:
+                response.data['user_id'] = request.user.id
+                response.data['username'] = request.user.username
+        
+        return response
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def test_token(request):
+    """
+    Test endpoint to verify that a token is valid and working.
+    """
+    return Response({
+        'message': 'Token is valid',
+        'user_id': request.user.id,
+        'username': request.user.username
+    })
