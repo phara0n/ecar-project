@@ -1,0 +1,28 @@
+[
+{
+    "model": "auth.user",
+    "pk": 1,
+    "fields": {
+        "password": "pbkdf2_sha256$870000$puROKNiLMws8hpgWc4Yhpq$t946OPzVNIhXopPltgETquvs513gnUM8Dm1jq8ZIphA=",
+        "last_login": "2025-03-31T15:33:29.941Z",
+        "is_superuser": true,
+        "username": "ecar",
+        "first_name": "",
+        "last_name": "",
+        "email": "mehdi@ecar.tn",
+        "is_staff": true,
+        "is_active": true,
+        "date_joined": "2025-03-31T15:33:12.784Z",
+        "groups": [],
+        "user_permissions": []
+    }
+},
+{
+    "model": "sessions.session",
+    "pk": "80e5qxho992ht2rxbssb5xvq27bwnhi0",
+    "fields": {
+        "session_data": ".eJxVjDsOwjAQBe_iGlnxJ_5Q0ucM1nq9wQFkS3FSIe6OI6WAdmbee7MA-5bD3mgNS2JXJtjll0XAJ5VDpAeUe-VYy7YukR8JP23jU030up3t30GGlvt6QKec8mSsHKSPNKIGr5WcE47CKBPF7KF7DUmAUB1F40k5LbS2ViL7fAHE9Tbk:1tzH8j:xBbDj1Fzlh2cSKf1fLH6M3jTASTJH167Hg0BhF5oHrc",
+        "expire_date": "2025-04-14T15:33:29.943Z"
+    }
+}
+]

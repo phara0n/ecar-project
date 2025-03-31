@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Completed</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #eee;
+        }
+        .header {
+            background-color: #007bff;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .content {
+            padding: 20px;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+        }
+        .info-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 10px 15px;
+            margin: 20px 0;
+        }
+        h1 {
+            color: #007bff;
+            margin-top: 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Your Service is Completed</h1>
+        </div>
+        <div class="content">
+            <p>Hello {{ user.first_name }},</p>
+            
+            <p>We're pleased to inform you that the service for your vehicle has been completed.</p>
+            
+            <div class="info-box">
+                <h3>Service Details:</h3>
+                <p><strong>Service:</strong> {{ service.title }}</p>
+                <p><strong>Vehicle:</strong> {{ car.make }} {{ car.model }} ({{ car.license_plate }})</p>
+                <p><strong>Completion Date:</strong> {{ service.completed_date|date:"d/m/Y" }}</p>
+            </div>
+            
+            <p>Your vehicle is now ready for pickup. If you have any questions about the service performed or would like more information, please don't hesitate to contact us.</p>
+            
+            {% if service.invoice %}
+            <p>You can find the invoice attached to this email.</p>
+            {% endif %}
+            
+            <p>Thank you for choosing ECAR Garage for your automotive needs.</p>
+            
+            <a href="https://ecar.tn/dashboard" class="btn">View in Dashboard</a>
+        </div>
+        <div class="footer">
+            <p>ECAR Garage | Tunisia | +216 12345678 | contact@ecar.tn</p>
+            <p>© {{ service.completed_date|date:"Y" }} ECAR. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html> 
