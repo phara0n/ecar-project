@@ -1,0 +1,29 @@
+name: Validate Serializers
+
+on:
+  push:
+    paths:
+      - 'backend/api/serializers.py'
+      - 'backend/core/models.py'
+  pull_request:
+    paths:
+      - 'backend/api/serializers.py'
+      - 'backend/core/models.py'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+      - name: Run serializer validation
+        run: |
+          cd backend
+          python scripts/validate_serializers.py 

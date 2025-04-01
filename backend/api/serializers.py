@@ -1,43 +1,37 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification
-from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from drf_yasg.utils import swagger_serializer_method
 
+# Standard serializers
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name')
-        read_only_fields = ('id', 'username')
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
+        read_only_fields = ['id']
 
 class CustomerSerializer(serializers.ModelSerializer):
     user = UserSerializer()
     
     class Meta:
         model = Customer
-        fields = ('id', 'user', 'phone', 'address', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        fields = ['id', 'user', 'phone', 'address', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
     
     def create(self, validated_data):
         user_data = validated_data.pop('user')
-        user = User.objects.create_user(
-            username=user_data.get('email'),
-            email=user_data.get('email'),
-            first_name=user_data.get('first_name', ''),
-            last_name=user_data.get('last_name', ''),
-            password=User.objects.make_random_password()  # Generate a random password
-        )
+        user = User.objects.create(**user_data)
         customer = Customer.objects.create(user=user, **validated_data)
         return customer
     
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', None)
         if user_data:
-            user = instance.user
-            user.email = user_data.get('email', user.email)
-            user.first_name = user_data.get('first_name', user.first_name)
-            user.last_name = user_data.get('last_name', user.last_name)
-            user.save()
+            user_serializer = UserSerializer(instance.user, data=user_data, partial=True)
+            if user_serializer.is_valid():
+                user_serializer.save()
         
         instance.phone = validated_data.get('phone', instance.phone)
         instance.address = validated_data.get('address', instance.address)
@@ -45,126 +39,137 @@ class CustomerSerializer(serializers.ModelSerializer):
         return instance
 
 class CarSerializer(serializers.ModelSerializer):
-    customer_name = serializers.SerializerMethodField()
+    customer_id = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all(),
+        source='customer',
+        write_only=True
+    )
+    customer = CustomerSerializer(read_only=True)
     
     class Meta:
         model = Car
-        fields = ('id', 'customer', 'customer_name', 'make', 'model', 'year', 'license_plate', 
-                 'vin', 'fuel_type', 'mileage', 'created_at', 'updated_at')
-        read_only_fields = ('id', 'created_at', 'updated_at')
-    
-    def get_customer_name(self, obj):
-        return f"{obj.customer.user.first_name} {obj.customer.user.last_name}"
+        fields = ['id', 'customer', 'customer_id', 'make', 'model', 'year', 'license_plate', 'vin', 'fuel_type', 'mileage', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ServiceItemSerializer(serializers.ModelSerializer):
+    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all())
+    
     class Meta:
         model = ServiceItem
-        fields = ('id', 'service', 'item_type', 'name', 'description', 'quantity', 
+        fields = ['id', 'service', 'item_type', 'name', 'description', 'quantity', 'unit_price', 'total_price']
+        read_only_fields = ['id', 'total_price']
+
+# Simplified serializers for Swagger documentation
+class ServiceItemSwaggerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceItem
+        fields = ('id', 'item_type', 'name', 'description', 'quantity', 
                  'unit_price', 'total_price')
         read_only_fields = ('id', 'total_price')
 
+class CarSwaggerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Car
+        fields = ('id', 'make', 'model', 'year', 'license_plate')
+
+# Standard serializers with methods to handle nested serializers for Swagger
 class ServiceSerializer(serializers.ModelSerializer):
-    car_details = CarSerializer(source='car', read_only=True)
-    items = ServiceItemSerializer(many=True, read_only=True)
+    car_id = serializers.PrimaryKeyRelatedField(
+        queryset=Car.objects.all(),
+        source='car',
+        write_only=True
+    )
+    car = CarSerializer(read_only=True)
+    service_items = ServiceItemSerializer(many=True, read_only=True)
     
     class Meta:
         model = Service
-        fields = ('id', 'car', 'car_details', 'title', 'description', 'status', 
+        fields = ['id', 'car', 'car_id', 'title', 'description', 'status', 
                  'scheduled_date', 'completed_date', 'technician_notes', 
-                 'created_at', 'updated_at', 'items')
-        read_only_fields = ('id', 'created_at', 'updated_at')
+                 'service_items', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 class InvoiceSerializer(serializers.ModelSerializer):
-    service_details = ServiceSerializer(source='service', read_only=True)
-    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    tax_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    service_id = serializers.PrimaryKeyRelatedField(
+        queryset=Service.objects.all(),
+        source='service',
+        write_only=True
+    )
+    service = ServiceSerializer(read_only=True)
     
     class Meta:
         model = Invoice
-        fields = ('id', 'service', 'service_details', 'invoice_number', 'issued_date', 
-                 'due_date', 'status', 'notes', 'tax_rate', 'pdf_file', 
-                 'created_at', 'updated_at', 'subtotal', 'tax_amount', 'total')
-        read_only_fields = ('id', 'invoice_number', 'created_at', 'updated_at', 
-                           'subtotal', 'tax_amount', 'total')
+        fields = ['id', 'service', 'service_id', 'invoice_number', 'issued_date', 
+                 'due_date', 'status', 'subtotal', 
+                 'total', 'notes', 'pdf_file', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'invoice_number', 'subtotal', 
+                          'total', 'created_at', 'updated_at']
 
 class NotificationSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='user',
+        write_only=True
+    )
+    
     class Meta:
         model = Notification
-        fields = ('id', 'customer', 'title', 'message', 'notification_type', 
-                 'is_read', 'created_at')
-        read_only_fields = ('id', 'created_at')
+        fields = ['id', 'user', 'user_id', 'title', 'message', 'notification_type', 
+                 'is_read', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 # Registration and authentication serializers
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
-    password_confirm = serializers.CharField(write_only=True)
-    
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    password_confirm = serializers.CharField(write_only=True, required=True)
+    phone = serializers.CharField(required=False, write_only=True)
+    address = serializers.CharField(required=False, write_only=True)
+
     class Meta:
         model = User
-        fields = ('username', 'email', 'password', 'password_confirm', 'first_name', 'last_name')
-    
-    def validate(self, data):
-        if data['password'] != data['password_confirm']:
-            raise serializers.ValidationError(_("Passwords don't match."))
-        return data
-    
+        fields = ('username', 'password', 'password_confirm', 'email', 'first_name', 'last_name', 'phone', 'address')
+        extra_kwargs = {
+            'first_name': {'required': True},
+            'last_name': {'required': True},
+            'email': {'required': True}
+        }
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
+
     def create(self, validated_data):
-        validated_data.pop('password_confirm')
+        validated_data.pop('password_confirm', None)
+        phone = validated_data.pop('phone', '')
+        address = validated_data.pop('address', '')
+        
         user = User.objects.create_user(**validated_data)
+        
+        # Create customer profile
+        Customer.objects.create(user=user, phone=phone, address=address)
+        
         return user
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
-    new_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
     confirm_password = serializers.CharField(required=True)
-    
-    def validate(self, data):
-        if data['new_password'] != data['confirm_password']:
-            raise serializers.ValidationError(_("New passwords don't match."))
-        return data
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    Custom token serializer to include additional user data in the token response
-    """
-    
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         
-        # Add custom claims to the token
-        token['name'] = f"{user.first_name} {user.last_name}"
+        # Add custom claims
         token['username'] = user.username
         token['email'] = user.email
         token['is_staff'] = user.is_staff
-        token['is_superuser'] = user.is_superuser
         
-        # Add any other custom claims that might be useful
-        if hasattr(user, 'customer'):
-            token['customer_id'] = user.customer.id
-        
-        return token
-    
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        
-        # Add more data to the response
-        user = self.user
-        
-        # Add user information to the response
-        data['user'] = {
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'is_staff': user.is_staff,
-            'is_superuser': user.is_superuser,
-        }
-        
-        # Add groups if the user belongs to any
-        if user.groups.exists():
-            data['user']['groups'] = list(user.groups.values_list('name', flat=True))
-        
-        return data 
+        return token 

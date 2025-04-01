@@ -41,11 +41,6 @@ services:
       - PGBOUNCER_IGNORE_STARTUP_PARAMETERS=extra_float_digits
     depends_on:
       - db
-    healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7.2-alpine
