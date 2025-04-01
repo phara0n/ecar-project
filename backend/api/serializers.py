@@ -80,7 +80,7 @@ class ServiceSerializer(serializers.ModelSerializer):
         write_only=True
     )
     car = CarSerializer(read_only=True)
-    service_items = ServiceItemSerializer(many=True, read_only=True)
+    service_items = ServiceItemSerializer(many=True, read_only=True, source='items')
     
     class Meta:
         model = Service
@@ -95,7 +95,23 @@ class InvoiceSerializer(serializers.ModelSerializer):
         source='service',
         write_only=True
     )
-    service = ServiceSerializer(read_only=True)
+    # Use a simpler representation of service to avoid circular references
+    service = serializers.SerializerMethodField(read_only=True)
+    
+    def get_service(self, invoice):
+        service = invoice.service
+        return {
+            'id': service.id,
+            'title': service.title,
+            'description': service.description,
+            'status': service.status,
+            'car': {
+                'id': service.car.id,
+                'make': service.car.make,
+                'model': service.car.model,
+                'license_plate': service.car.license_plate
+            }
+        }
     
     class Meta:
         model = Invoice

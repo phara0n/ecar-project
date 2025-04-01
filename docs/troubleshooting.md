@@ -178,6 +178,94 @@ python manage.py check
    python manage.py migrate --fake-initial
    ```
 
+### Schema/Model Inconsistency Issues
+
+**Symptoms:**
+- ProgrammingError in Django Admin
+- Errors like "column X does not exist" 
+- Model field exists in code but not in database or vice versa
+- AttributeError when accessing removed model fields
+
+**Solutions:**
+
+1. **Complete Model & Related Files Cleanup (April 2, 2025)**
+   
+   When removing fields from models, it's important to check all related files that might reference those fields:
+   
+   1. **Identified Issue**: After removing the `tax_rate` field from the Invoice model, we encountered `AttributeError: 'Invoice' object has no attribute 'tax_rate'` when trying to generate PDFs or use bulk invoice creation.
+   
+   2. **Comprehensive Fix**:
+      - Fixed PDF generation utility (`utils/pdf_utils.py`)
+      - Updated API views for bulk invoice creation (`api/views.py`)
+      - Modified email templates (`templates/emails/invoice_created.html`)
+   
+   3. **Best Practice**: When removing model fields, use this checklist:
+      ```
+      # Removing Field Checklist
+      [ ] Update model definition
+      [ ] Update admin.py (list_display, readonly_fields, etc.)
+      [ ] Update serializers.py
+      [ ] Create/apply database migration
+      [ ] Check for references in:
+          - PDF/document generation utilities
+          - Email templates
+          - API views where objects are created
+          - Custom admin forms
+          - Tests 
+          - Frontend code that may expect the field
+      ```
+   
+   4. **Verification**: After making all changes, restart the backend container and test all relevant functionality:
+      ```bash
+      docker-compose restart backend
+      ```
+
+2. **Safe SQL Migration (April 2, 2025):**
+   We encountered an issue where the Invoice model had a tax_rate field that didn't exist in the database schema. To fix this:
+   
+   1. Create a blank migration:
+      ```bash
+      python manage.py makemigrations core --empty --name fix_invoice_schema
+      ```
+   
+   2. Add SQL to safely check and handle missing columns:
+      ```python
+      operations = [
+          migrations.RunSQL(
+              """
+              DO $$
+              BEGIN
+                  -- Check if column exists
+                  IF EXISTS (
+                      SELECT FROM information_schema.columns 
+                      WHERE table_name = 'table_name' AND column_name = 'column_name'
+                  ) THEN
+                      -- Remove the column if it exists
+                      ALTER TABLE table_name DROP COLUMN column_name;
+                  END IF;
+              END $$;
+              """,
+              reverse_sql=migrations.RunSQL.noop
+          )
+      ]
+      ```
+   
+   3. Apply the migration:
+      ```bash
+      python manage.py migrate
+      ```
+   
+   The key to this approach is checking if the column exists before attempting to modify it. This avoids migration failures.
+
+3. **Resolving Model Inconsistencies:**
+   - Update the model definition to match the current database schema
+   - Update model references in admin.py, serializers.py, and views.py
+   - Restart the backend service to apply changes
+   
+   ```bash
+   docker-compose restart backend
+   ```
+
 ### Static Files Issues
 
 **Solutions:**
@@ -190,6 +278,89 @@ python manage.py check
    ```python
    STATIC_URL = 'static/'
    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+   ```
+
+### Django Admin RecursionError
+
+**Symptoms:**
+- RecursionError: maximum recursion depth exceeded when adding or editing related objects
+- Error occurs in JSON encoder or serialization
+- Admin form loads but crashes on submission
+
+**Causes:**
+- Circular references between models with deep nested relationships
+- Infinite recursion during object serialization
+- Django trying to serialize too much related data
+
+**Solutions:**
+
+1. **Use Raw ID Fields (April 2, 2025 Fix):**
+   ```python
+   class InvoiceAdmin(admin.ModelAdmin):
+       # Instead of standard field rendering, use raw ID fields
+       raw_id_fields = ('service',)
+   ```
+   
+   Raw ID fields display a simple input box with a lookup icon instead of fully serializing the related object.
+
+2. **Implement Autocomplete Fields:**
+   ```python
+   class ServiceAdmin(admin.ModelAdmin):
+       autocomplete_fields = ['car']
+       
+       # Ensure the referenced model's Admin has search_fields defined
+       # to make autocomplete work properly
+   ```
+   
+   Autocomplete fields provide enhanced usability while preventing the recursion issues.
+
+3. **Limit Inline Items:**
+   ```python
+   class ServiceItemInline(admin.TabularInline):
+       model = ServiceItem
+       extra = 0
+       max_num = 10  # Limit the number of inline items
+       fields = ('name', 'item_type', 'quantity', 'unit_price')  # Specify only needed fields
+   ```
+   
+   This reduces the amount of data being serialized.
+
+4. **Clear Cached Properties:**
+   ```python
+   def save_model(self, request, obj, form, change):
+       super().save_model(request, obj, form, change)
+       # Clear any cached properties to prevent recursion
+       if hasattr(obj, '_service_cache'):
+           delattr(obj, '_service_cache')
+   ```
+   
+   Django caches related objects, which can sometimes cause recursion issues.
+
+5. **Customize Form Rendering:**
+   ```python
+   def get_form(self, request, obj=None, **kwargs):
+       form = super().get_form(request, obj, **kwargs)
+       if 'service' in form.base_fields:
+           form.base_fields['service'].widget.attrs['style'] = 'width: 800px;'
+       return form
+   ```
+   
+   Customizing the form can help prevent issues with complex widgets.
+
+6. **Use SerializerMethodField in DRF:**
+
+   If you're using Django REST Framework and seeing recursion issues in API responses:
+   ```python
+   class InvoiceSerializer(serializers.ModelSerializer):
+       # Instead of nested serializer
+       service = serializers.SerializerMethodField()
+       
+       def get_service(self, obj):
+           # Return minimal representation to prevent recursion
+           return {
+               'id': obj.service.id,
+               'title': obj.service.title
+           }
    ```
 
 ## Performance Optimization
@@ -254,6 +425,76 @@ If you're still experiencing issues logging into the Django admin interface afte
 3. Upon successful authentication, you'll be redirected to the Django admin interface
 
 This alternative login page bypasses potential JWT configuration issues by using a dedicated API endpoint (`/api/admin-login/`) that explicitly uses Django's session authentication.
+
+### Django Admin Logout Error (HTTP 405 Method Not Allowed)
+
+**Symptoms:**
+- Clicking logout in Django admin interface shows "This page isn't working" error
+- Browser console shows HTTP ERROR 405
+- `admin/logout/` URL returns "Method Not Allowed"
+
+**Cause:**
+Django's admin logout view expects POST requests by default, but the browser is trying to access it with a GET request. When running in Docker, the routing and access patterns can sometimes cause this issue.
+
+**Solutions:**
+
+1. **Updated Custom Logout View (Implemented April 2025):**
+   
+   We've modified the custom logout view to accept both GET and POST methods:
+   
+   ```python
+   @csrf_exempt
+   @require_http_methods(["GET", "POST"])
+   def custom_logout(request):
+       """Custom logout view that properly handles the 'next' parameter."""
+       next_url = request.GET.get('next', '/api/docs/')
+       logout(request)
+       return redirect(next_url)
+   ```
+
+2. **Logout Redirect Configuration (April 2, 2025):**
+
+   We've updated the redirect URL to point to the admin login page instead of `/api/docs/`:
+   
+   ```python
+   # In settings.py
+   LOGOUT_REDIRECT_URL = '/admin/login/'
+   
+   # In Swagger settings
+   SWAGGER_SETTINGS = {
+       # ...
+       'LOGOUT_URL': '/admin/logout/?next=/admin/login/',
+       # ...
+   }
+   ```
+
+   This ensures that after logout, users are redirected to a more appropriate page (the admin login page).
+
+3. **Verifying the Fix:**
+   
+   After updating the code and restarting the Docker containers, verify that:
+   - You can log out successfully from Django admin
+   - You are redirected to the correct page after logout
+   - No HTTP 405 errors appear in the browser console
+   
+   ```bash
+   # Restart the backend container to apply changes
+   docker-compose restart backend
+   ```
+
+4. **Alternative Approach (if needed):**
+   
+   If issues persist, add a custom template to override the admin logout functionality:
+   
+   ```bash
+   # Create a template directory in your app
+   mkdir -p backend/templates/admin
+   
+   # Create a custom logout.html template
+   echo '<form method="post">{% csrf_token %}<button type="submit">Confirm logout</button></form>' > backend/templates/admin/logout.html
+   ```
+   
+   Then add the template directory to your TEMPLATES setting in settings.py.
 
 ## Swagger Documentation Issues
 

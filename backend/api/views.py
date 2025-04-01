@@ -33,7 +33,7 @@ import csv
 from io import StringIO
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_http_methods
 from django.shortcuts import redirect
 
 # Set up logger
@@ -1215,7 +1215,6 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                     due_date = row.get('due_date', None)
                     status = row.get('status', 'draft')
                     notes = row.get('notes', '')
-                    tax_rate = row.get('tax_rate', 19.00)
                     pdf_filename = row.get('pdf_filename', None)
                     
                     # Validate required fields
@@ -1247,8 +1246,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                         issued_date=issued_date,
                         due_date=due_date,
                         status=status,
-                        notes=notes,
-                        tax_rate=tax_rate
+                        notes=notes
                     )
                     
                     # Find and attach PDF file if filename is provided
@@ -1543,9 +1541,10 @@ class UserRegistrationView(generics.CreateAPIView):
             'message': _('User registered successfully')
         }, status=status.HTTP_201_CREATED)
 
-@require_GET
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def custom_logout(request):
     """Custom logout view that properly handles the 'next' parameter."""
-    next_url = request.GET.get('next', '/api/docs/')
+    next_url = request.GET.get('next', '/admin/login/')
     logout(request)
     return redirect(next_url)

@@ -254,7 +254,7 @@ RATELIMIT_KEY_FUNCTION = 'django_ratelimit.keys.ip'
 
 # Custom redirects
 LOGIN_REDIRECT_URL = '/api/docs/'
-LOGOUT_REDIRECT_URL = '/api/docs/'
+LOGOUT_REDIRECT_URL = '/admin/login/'
 
 # Security Settings
 SESSION_COOKIE_SECURE = False  # Set to True in production
@@ -334,7 +334,7 @@ SWAGGER_SETTINGS = {
     },
     'USE_SESSION_AUTH': True,
     'LOGIN_URL': '/admin/login/',
-    'LOGOUT_URL': '/admin/logout/',
+    'LOGOUT_URL': '/admin/logout/?next=/admin/login/',
     'DEFAULT_MODEL_DEPTH': 1,
     'VALIDATOR_URL': None,
     'DEFAULT_INFO': None,

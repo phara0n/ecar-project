@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.translation import gettext_lazy as _
 import uuid
+from django.db import transaction
+import time
 
 class Customer(models.Model):
     """
@@ -172,6 +174,7 @@ class Invoice(models.Model):
         ('draft', _('Draft')),
         ('pending', _('Pending')),
         ('paid', _('Paid')),
+        ('refunded', _('Refunded')),
         ('cancelled', _('Cancelled')),
     ]
 
@@ -181,8 +184,10 @@ class Invoice(models.Model):
     due_date = models.DateField(_('Due Date'))
     status = models.CharField(_('Status'), max_length=10, choices=STATUS_CHOICES, default='draft')
     notes = models.TextField(_('Notes'), blank=True, null=True)
-    tax_rate = models.DecimalField(_('Tax Rate'), max_digits=5, decimal_places=2, default=19.00)  # Tunisia standard VAT rate
     pdf_file = models.FileField(_('PDF File'), upload_to='invoices/', blank=True, null=True)
+    refund_date = models.DateField(_('Refund Date'), blank=True, null=True)
+    refund_amount = models.DecimalField(_('Refund Amount'), max_digits=10, decimal_places=2, blank=True, null=True)
+    refund_reason = models.TextField(_('Refund Reason'), blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -191,55 +196,109 @@ class Invoice(models.Model):
         return sum(item.total_price for item in self.service.items.all())
 
     @property
-    def tax_amount(self):
-        return (self.subtotal * self.tax_rate) / 100
-
-    @property
     def total(self):
-        return self.subtotal + self.tax_amount
+        return self.subtotal
 
     def save(self, *args, **kwargs):
         # Check if this is a new invoice or status is changing to non-draft
         is_new = not self.pk
         status_changed = False
+        old_status = None
         
         if not is_new:
-            old_status = Invoice.objects.get(pk=self.pk).status
-            if old_status != self.status:
-                status_changed = True
+            try:
+                old_obj = Invoice.objects.get(pk=self.pk)
+                old_status = old_obj.status
+                if old_status != self.status:
+                    status_changed = True
+            except Invoice.DoesNotExist:
+                pass
         
         if not self.invoice_number:
             self.invoice_number = f"INV-{uuid.uuid4().hex[:8].upper()}"
         
+        # Handle refund status changes
+        if status_changed and self.status == 'refunded' and old_status == 'paid':
+            # Set refund date if not set
+            if not self.refund_date:
+                from django.utils import timezone
+                self.refund_date = timezone.now().date()
+            
+            # Set refund amount if not set (default to full amount)
+            if not self.refund_amount:
+                self.refund_amount = self.total
+        
         # Save the invoice first so it has an ID
         super().save(*args, **kwargs)
         
-        # Generate PDF if status is not draft or if PDF doesn't exist
-        if self.status != 'draft' or not self.pdf_file:
-            from utils.pdf_utils import generate_invoice_pdf
-            generate_invoice_pdf(self)
+        # Avoid immediate recursive calls by checking flags
+        from django.db import transaction
+        import time
+        
+        # Use transaction to avoid database inconsistencies
+        with transaction.atomic():
+            # Generate PDF if status is not draft or if PDF doesn't exist
+            if (self.status != 'draft' or not self.pdf_file) and not getattr(self, '_pdf_generation_in_progress', False):
+                self._pdf_generation_in_progress = True
+                # Small delay to avoid potential race conditions
+                time.sleep(0.1)
+                try:
+                    from utils.pdf_utils import generate_invoice_pdf
+                    generate_invoice_pdf(self)
+                except Exception as e:
+                    print(f"Error generating PDF: {e}")
+                finally:
+                    self._pdf_generation_in_progress = False
             
-        # If status changed to paid or completed, create a notification
-        if self.status == 'paid' and not hasattr(self, '_status_was_paid'):
-            self._create_invoice_notification()
-            self._status_was_paid = True
+            # If status changed to paid, create a notification
+            if self.status == 'paid' and not getattr(self, '_notification_in_progress', False) and status_changed and old_status != 'refunded':
+                self._notification_in_progress = True
+                try:
+                    self._create_invoice_paid_notification()
+                finally:
+                    self._notification_in_progress = False
             
-        # Send email notification for new invoices or status changes
-        if is_new or status_changed:
-            from utils.email_utils import send_invoice_notification
-            send_invoice_notification(self)
+            # If status changed to refunded, create a refund notification
+            if self.status == 'refunded' and not getattr(self, '_refund_notification_in_progress', False) and status_changed:
+                self._refund_notification_in_progress = True
+                try:
+                    self._create_refund_notification()
+                finally:
+                    self._refund_notification_in_progress = False
             
-            # Send SMS notification for new invoices
-            if is_new:
-                from utils.sms_utils import send_invoice_sms
-                send_invoice_sms(self)
+            # Send email notification for new invoices or status changes
+            if (is_new or status_changed) and not getattr(self, '_notifications_in_progress', False):
+                self._notifications_in_progress = True
+                try:
+                    from utils.email_utils import send_invoice_notification
+                    send_invoice_notification(self)
+                    
+                    # Send SMS notification for new invoices
+                    if is_new:
+                        from utils.sms_utils import send_invoice_sms
+                        send_invoice_sms(self)
+                except Exception as e:
+                    print(f"Error sending notifications: {e}")
+                finally:
+                    self._notifications_in_progress = False
 
-    def _create_invoice_notification(self):
+    def _create_invoice_paid_notification(self):
         """Create a notification when an invoice is paid"""
         Notification.objects.create(
             customer=self.service.car.customer,
             title=_('Invoice Paid'),
             message=_('Your invoice #{} has been marked as paid. Thank you for your business!').format(self.invoice_number),
+            notification_type='invoice'
+        )
+        
+    def _create_refund_notification(self):
+        """Create a notification when an invoice is refunded"""
+        Notification.objects.create(
+            customer=self.service.car.customer,
+            title=_('Invoice Refunded'),
+            message=_('Your invoice #{} has been refunded for {}. If you have any questions, please contact us.').format(
+                self.invoice_number, self.refund_amount or self.total
+            ),
             notification_type='invoice'
         )
 

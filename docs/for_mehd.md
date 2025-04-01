@@ -268,4 +268,154 @@ This document will be updated daily with progress and new developments.
    - Cache responses when appropriate
 
 ### Next Documentation Update
-Will be provided after completing the authentication implementation and main layout structure. 
+Will be provided after completing the authentication implementation and main layout structure.
+
+## Recent Bug Fixes and Improvements
+
+### Fixed Django Admin Logout Issue (April 2, 2025)
+- **Problem**: HTTP 405 Method Not Allowed error when attempting to logout from Django Admin
+- **Cause**: Django's admin logout view expects POST requests, but the browser was making GET requests
+- **Solution**: Updated the custom_logout view to accept both GET and POST methods using @require_http_methods(["GET", "POST"])
+- **Impact**: Users can now successfully logout from the Django Admin interface in the Docker environment
+- **Files Modified**: 
+  - `backend/api/views.py` (updated custom_logout function)
+  - Added documentation in `docs/troubleshooting.md`
+
+### Updated Logout Redirect URL (April 2, 2025)
+- **Problem**: After logout, users were being redirected to `/api/docs/` instead of the admin login page
+- **Solution**: Modified the redirect URL in custom_logout function and LOGOUT_REDIRECT_URL setting
+- **Impact**: Users now get redirected to the admin login page after logout for a better user experience
+- **Files Modified**:
+  - `backend/api/views.py` (updated custom_logout function's default redirect URL)
+  - `backend/ecar_backend/settings.py` (updated LOGOUT_REDIRECT_URL and Swagger settings)
+
+### Removed Tax Fields from Invoice Model (April 2, 2025)
+- **Problem**: ProgrammingError when accessing Invoice admin: "column core_invoice.tax_rate does not exist"
+- **Cause**: Model definition included tax_rate field, but it didn't exist in the database
+- **Solution**: 
+  - Removed tax_rate field from Invoice model
+  - Removed tax_amount property and updated total calculation to only use subtotal
+  - Removed tax_amount from readonly_fields in InvoiceAdmin
+  - Created a safe migration with SQL to handle the schema inconsistency
+- **Impact**: Users can now access Invoice administration without errors
+- **Files Modified**:
+  - `backend/core/models.py` (removed tax fields and calculation)
+  - `backend/core/admin.py` (updated readonly_fields)
+  - Added migration file to fix database schema
+
+### Completed Invoice Tax Removal (April 2, 2025)
+- **Problem**: AttributeError: 'Invoice' object has no attribute 'tax_rate' when viewing or editing invoices
+- **Cause**: While the tax_rate field was removed from the model, references to it remained in PDF generation and API views
+- **Solution**:
+  - Removed tax_rate reference from PDF generation in utils/pdf_utils.py
+  - Removed tax_rate reference from bulk invoice creation in API views
+  - Updated invoice_created.html email template to remove tax display
+- **Impact**: Users can now view, edit, and create invoices without errors
+- **Files Modified**:
+  - `backend/utils/pdf_utils.py` (removed tax_rate reference in PDF generation)
+  - `backend/api/views.py` (removed tax_rate in bulk invoice creation)
+  - `backend/templates/emails/invoice_created.html` (removed tax display in email template)
+
+### Fixed Invoice Creation RecursionError (April 2, 2025)
+- **Problem**: RecursionError: maximum recursion depth exceeded when adding an Invoice through Django admin
+- **Cause**: Circular reference in serializers causing infinite recursion during JSON encoding
+- **Solution**: 
+  - Replaced nested ServiceSerializer in InvoiceSerializer with SerializerMethodField to break the circular reference
+  - Created a simplified representation of the Service object to prevent deep nesting
+  - Fixed the service_items relationship by adding source='items' to match the related_name in models
+  - Updated the Django admin configuration to use raw_id_fields and autocomplete_fields
+  - Modified ServiceItemInline to use specified fields and limit the number of items
+  - Implemented custom get_form and save_model methods to clear cached relationships
+- **Impact**: Users can now add and edit Invoice objects through the Django admin interface
+- **Files Modified**:
+  - `backend/api/serializers.py` (updated InvoiceSerializer and ServiceSerializer)
+  - `backend/core/admin.py` (optimized admin configuration to prevent recursion)
+
+### Enhanced Invoice Form with Service Dropdown (April 2, 2025)
+- **Problem**: Invoice form required manual entry of Service ID, making it error-prone and difficult to use
+- **Solution**:
+  - Replaced service_id IntegerField with proper ModelChoiceField dropdown
+  - Enhanced service options display to show car and customer information
+  - Added custom CSS styling for the form elements
+  - Created custom admin template for the Invoice change form
+  - Implemented automatic filtering to only show services without existing invoices
+- **Impact**: Users can now select services from a user-friendly dropdown menu instead of entering IDs manually
+- **Files Modified**:
+  - `backend/core/admin.py` (updated InvoiceForm with ModelChoiceField)
+  - Added `backend/static/admin/css/custom/invoice_form.css`
+  - Added `backend/templates/admin/core/invoice/change_form.html`
+
+### Improved Invoice Admin with Service Items Management (April 2, 2025)
+- **Problem**: Invoice admin interface used custom styling that wasn't consistent with Django standards and didn't allow adding multiple service items
+- **Solution**:
+  - Simplified the InvoiceForm to use Django's standard admin widgets
+  - Added ServiceItemInlineForInvoice to allow managing service items directly in the invoice admin
+  - Removed custom CSS and templates for better consistency with Django admin
+  - Properly filtered service items to show only those related to the selected service
+- **Impact**: Users can now add and manage service items directly from the invoice admin interface
+- **Files Modified**:
+  - `backend/core/admin.py` (updated InvoiceAdmin to use standard widgets and added ServiceItemInlineForInvoice)
+  - Removed custom CSS and template files
+
+### Fixed Backend Restart Loop (April 2, 2025)
+- **Problem**: Backend container was continuously restarting due to an admin configuration error
+- **Cause**: `ServiceItemInlineForInvoice` class was configured incorrectly - `ServiceItem` model doesn't have a direct ForeignKey to `Invoice`
+- **Solution**:
+  - Replaced inline approach with a custom read-only field using `get_service_items` method
+  - Used HTML table to display service items associated with the invoice's service
+  - Implemented custom fieldsets to organize the invoice admin form 
+  - Completely removed the problematic inline class that was causing the restart loop
+- **Impact**: Backend container now starts and runs normally, allowing admin interface to function properly
+- **Files Modified**:
+  - `backend/core/admin.py` (updated ServiceItem display in Invoice admin)
+
+### Fixed Invoice Form FieldError (April 2, 2025)
+- **Problem**: FieldError when adding a new invoice: "'issued_date' cannot be specified for Invoice model form as it is a non-editable field"
+- **Cause**: The `issued_date` field was included in the editable form fields in the admin interface, but it's supposed to be non-editable
+- **Solution**:
+  - Removed `issued_date` from the fieldsets in the form
+  - Added it to the readonly_fields list
+  - Explicitly excluded it in the form's Meta class
+- **Impact**: Users can now add invoices without encountering the FieldError
+- **Files Modified**:
+  - `backend/core/admin.py` (updated InvoiceForm and InvoiceAdmin)
+
+### Implemented Data Protection Rules (April 2, 2025)
+- **Enhancement**: Added business rules to protect related data from accidental deletion by non-superadmin users
+- **Implementation**:
+  - **Customer Protection**: Non-superadmins cannot delete customers who have cars
+  - **Car Protection**: Non-superadmins cannot delete cars that have services
+  - **Service Protection**: Non-superadmins cannot delete services that have service items or invoices
+  - **Service Item Protection**: Only superadmins can delete service items
+  - **Car Ownership Transfer**: All admins can transfer car ownership between customers, supporting the business case where a car owner can change
+- **Impact**: Prevents accidental data loss while maintaining flexibility for legitimate business operations
+- **Files Modified**:
+  - `backend/core/admin.py` (added `has_delete_permission` methods to admin classes)
+
+### Added Invoice Refund Functionality (April 2, 2025)
+- **Enhancement**: Added ability to process refunds for invoices directly in the Django admin interface
+- **Implementation**:
+  - Added fields to track refunds: `refund_date`, `refund_amount`, `refund_reason`
+  - Implemented bulk refund action for quick processing of multiple invoices
+  - Added validation to ensure proper refund information is provided
+  - Created automatic status transition controls (only paid invoices can be refunded)
+  - Added notifications for customers when their invoices are refunded
+- **Usage**:
+  - **Individual Refund**: Change invoice status to "Refunded" and fill out refund information
+  - **Bulk Refund**: Select multiple invoices and use "Process refund for selected invoices" action
+- **Impact**: Staff can now easily process refunds while maintaining a complete audit trail
+- **Files Modified**:
+  - Database schema updated with refund-related fields
+  - `backend/core/admin.py` (added refund functionality to the admin interface)
+
+### Fixed Backend Import Error (April 2, 2025)
+- **Problem**: Backend container continuously restarting due to an import error
+- **Cause**: Trying to import `ngettext` from `django.utils.text` instead of `django.utils.translation`
+- **Solution**: Updated the import statement in admin.py to use the correct module
+- **Impact**: Backend container now starts and runs correctly
+- **Files Modified**:
+  - `backend/core/admin.py` (fixed import statement)
+
+### Pending Issues 
+- Continue implementing admin interface authentication
+- Finalize JWT token handling for seamless integration 
