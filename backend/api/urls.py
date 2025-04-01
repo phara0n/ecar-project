@@ -5,7 +5,7 @@ from .views import (
     UserViewSet, CustomerViewSet, CarViewSet, ServiceViewSet,
     ServiceItemViewSet, InvoiceViewSet, NotificationViewSet,
     RegisterView, ChangePasswordView, RateLimitedTokenObtainPairView,
-    TokenRefreshEndpoint, test_token
+    TokenRefreshEndpoint, test_token, blacklist_token, get_user_data
 )
 
 router = DefaultRouter()
@@ -23,7 +23,11 @@ urlpatterns = [
     # Authentication endpoints
     path('token/', RateLimitedTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshEndpoint.as_view(), name='token_refresh'),
+    path('token/blacklist/', blacklist_token, name='token_blacklist'),
     path('token/test/', test_token, name='token_test'),
     path('register/', RegisterView.as_view(), name='register'),
     path('change-password/', ChangePasswordView.as_view(), name='change_password'),
+    
+    # Admin helper endpoints
+    path('get-user-data/<int:user_id>/', get_user_data, name='get_user_data'),
 ] 

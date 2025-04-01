@@ -9,6 +9,7 @@ Django==5.1.7
 django-auditlog==3.0.0
 django-cors-headers==4.7.0
 django-debug-toolbar==4.4.0
+django-filter==24.2
 django-ratelimit==4.1.0
 django-redis==5.4.0
 djangorestframework==3.16.0

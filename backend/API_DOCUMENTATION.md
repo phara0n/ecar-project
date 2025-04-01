@@ -1,5 +1,18 @@
 # ECAR API Documentation
 
+## API Overview
+
+ECAR provides a comprehensive REST API that supports various operations for the garage management system. The API is secured with JWT authentication and supports filtering, pagination, and search capabilities.
+
+### API Features
+
+- **Authentication**: JWT-based authentication for secure access
+- **Authorization**: Role-based access control (RBAC) for admin vs. mobile users
+- **Filtering**: Advanced filtering capabilities using django-filter
+- **Pagination**: Limit/offset pagination for all list endpoints
+- **Search**: Text search across multiple fields
+- **Rate Limiting**: Protection against abuse through rate limiting
+
 ## Authentication
 
 ### Obtain JWT Token
@@ -94,6 +107,36 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 }
 ```
 
+## Filtering
+
+The API supports advanced filtering capabilities using django-filter. You can filter resources by various attributes using query parameters.
+
+### Example: Filtering Services by Status
+
+```
+GET /api/services/?status=pending
+```
+
+This returns all services with a "pending" status.
+
+### Example: Filtering Cars by Make and Year
+
+```
+GET /api/cars/?make=Toyota&year=2020
+```
+
+This returns all Toyota cars manufactured in 2020.
+
+### Multiple Value Filtering
+
+Some endpoints support filtering by multiple values for a single attribute:
+
+```
+GET /api/services/?status=pending&status=in_progress
+```
+
+This returns services with either "pending" or "in_progress" status.
+
 ## Customers
 
 ### List Customers
@@ -104,6 +147,11 @@ GET /api/customers/
 **Headers:**
 ```
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Query Parameters:**
+```
+search - Optional search term to filter customers by name, email, or phone (staff only)
 ```
 
 **Response:**
@@ -157,6 +205,185 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
   "created_at": "2023-04-01T12:00:00Z",
   "updated_at": "2023-04-01T12:00:00Z"
 }
+```
+
+### Get Customer Statistics
+```
+GET /api/customers/{customer_id}/statistics/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "total_cars": 2,
+  "total_services": 5,
+  "completed_services": 3,
+  "total_amount_spent": 350.75,
+  "paid_invoices": 3,
+  "pending_invoices": 1,
+  "last_service_date": "2023-04-15T10:00:00Z"
+}
+```
+
+### Get Customer Service History
+```
+GET /api/customers/{customer_id}/service_history/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "car": 1,
+    "car_details": {
+      "id": 1,
+      "customer": 1,
+      "customer_name": "John Doe",
+      "make": "Toyota",
+      "model": "Corolla",
+      "year": 2020,
+      "license_plate": "123ABC",
+      "vin": "1HGBH41JXMN109186",
+      "fuel_type": "gasoline",
+      "mileage": 15000,
+      "created_at": "2023-04-01T12:00:00Z",
+      "updated_at": "2023-04-01T12:00:00Z"
+    },
+    "title": "Oil Change",
+    "description": "Regular oil change service",
+    "status": "completed",
+    "scheduled_date": "2023-04-15T10:00:00Z",
+    "completed_date": "2023-04-15T11:30:00Z",
+    "technician_notes": "Used synthetic oil",
+    "created_at": "2023-04-10T12:00:00Z",
+    "updated_at": "2023-04-15T11:30:00Z",
+    "items": []
+  },
+  // ... more services
+]
+```
+
+### Update Customer Address
+```
+PATCH /api/customers/{customer_id}/update_address/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "address": "456 New Street, Tunis, Tunisia"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "user": {
+    "id": 2,
+    "username": "john.doe",
+    "email": "john.doe@example.com",
+    "first_name": "John",
+    "last_name": "Doe"
+  },
+  "phone": "21612345678",
+  "address": "456 New Street, Tunis, Tunisia",
+  "created_at": "2023-04-01T12:00:00Z",
+  "updated_at": "2023-04-01T12:30:00Z"
+}
+```
+
+### Get Customer Cars
+```
+GET /api/customers/{customer_id}/cars/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  // ... more cars
+]
+```
+
+### Bulk Create Customers (Admin Only)
+```
+POST /api/customers/bulk_create/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+file: [CSV file with customer data]
+```
+
+**CSV Format:**
+```
+email,first_name,last_name,phone,address
+user1@example.com,John,Doe,21612345678,123 Street Tunis
+user2@example.com,Jane,Smith,21687654321,456 Avenue Sfax
+```
+
+**Response:**
+```json
+{
+  "created_customers": 2,
+  "errors": []
+}
+```
+
+### Export Customers (Admin Only)
+```
+GET /api/customers/export/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```
+CSV file download with customer data
 ```
 
 ## Cars
@@ -293,12 +520,225 @@ GET /api/services/
 Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 ```
 
+**Query Parameters:**
+```
+status - Filter by status (scheduled, in_progress, completed, cancelled)
+car - Filter by car ID
+date_from - Filter by scheduled date (ISO format, e.g., 2023-04-01)
+date_to - Filter by scheduled date (ISO format, e.g., 2023-04-30)
+search - Search by title or description
+order_by - Order by field (default: -scheduled_date)
+```
+
 **Response:**
-Similar to the Get Car Services response but showing all services for the authenticated user
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "car": 1,
+      "car_details": {
+        "id": 1,
+        "customer": 1,
+        "customer_name": "John Doe",
+        "make": "Toyota",
+        "model": "Corolla",
+        "year": 2020,
+        "license_plate": "123ABC",
+        "vin": "1HGBH41JXMN109186",
+        "fuel_type": "gasoline",
+        "mileage": 15000,
+        "created_at": "2023-04-01T12:00:00Z",
+        "updated_at": "2023-04-01T12:00:00Z"
+      },
+      "title": "Oil Change",
+      "description": "Regular oil change service",
+      "status": "completed",
+      "scheduled_date": "2023-04-15T10:00:00Z",
+      "completed_date": "2023-04-15T11:30:00Z",
+      "technician_notes": "Used synthetic oil",
+      "created_at": "2023-04-10T12:00:00Z",
+      "updated_at": "2023-04-15T11:30:00Z",
+      "items": []
+    }
+  ]
+}
+```
+
+### Get Service Details
+```
+GET /api/services/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "car_details": {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "completed",
+  "scheduled_date": "2023-04-15T10:00:00Z",
+  "completed_date": "2023-04-15T11:30:00Z",
+  "technician_notes": "Used synthetic oil",
+  "created_at": "2023-04-10T12:00:00Z",
+  "updated_at": "2023-04-15T11:30:00Z",
+  "items": []
+}
+```
+
+### Create Service
+```
+POST /api/services/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "car": 1,
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "scheduled",
+  "scheduled_date": "2023-04-15T10:00:00Z"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "car_details": {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "scheduled",
+  "scheduled_date": "2023-04-15T10:00:00Z",
+  "completed_date": null,
+  "technician_notes": null,
+  "created_at": "2023-04-10T12:00:00Z",
+  "updated_at": "2023-04-10T12:00:00Z",
+  "items": []
+}
+```
+
+### Update Service
+```
+PUT /api/services/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "car": 1,
+  "title": "Oil Change and Filter Replacement",
+  "description": "Regular oil change service with new filter",
+  "status": "in_progress",
+  "scheduled_date": "2023-04-15T10:00:00Z"
+}
+```
+
+**Response:**
+Same format as Get Service Details
+
+### Delete Service
+```
+DELETE /api/services/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```
+204 No Content
+```
+
+### Get Service Items
+```
+GET /api/services/{id}/items/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "service": 1,
+    "item_type": "part",
+    "name": "Oil Filter",
+    "description": "OEM oil filter",
+    "quantity": 1,
+    "unit_price": "15.00",
+    "total_price": "15.00"
+  },
+  {
+    "id": 2,
+    "service": 1,
+    "item_type": "labor",
+    "name": "Oil Change",
+    "description": "Labor cost for oil change",
+    "quantity": 1,
+    "unit_price": "35.00",
+    "total_price": "35.00"
+  }
+]
+```
 
 ### Get Service Invoice
 ```
-GET /api/services/1/invoice/
+GET /api/services/{id}/invoice/
 ```
 
 **Headers:**
@@ -353,6 +793,284 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 }
 ```
 
+### Mark Service as Completed
+```
+POST /api/services/{id}/complete/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "technician_notes": "Service completed - used synthetic oil"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "car_details": {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "completed",
+  "scheduled_date": "2023-04-15T10:00:00Z",
+  "completed_date": "2023-04-15T11:30:00Z",
+  "technician_notes": "Service completed - used synthetic oil",
+  "created_at": "2023-04-10T12:00:00Z",
+  "updated_at": "2023-04-15T11:30:00Z",
+  "items": []
+}
+```
+
+### Cancel Service
+```
+POST /api/services/{id}/cancel/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "reason": "Customer canceled appointment"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "car_details": {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "cancelled",
+  "scheduled_date": "2023-04-15T10:00:00Z",
+  "completed_date": null,
+  "technician_notes": "Cancelled: Customer canceled appointment",
+  "created_at": "2023-04-10T12:00:00Z",
+  "updated_at": "2023-04-15T11:30:00Z",
+  "items": []
+}
+```
+
+### Reschedule Service
+```
+POST /api/services/{id}/reschedule/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "scheduled_date": "2023-04-20T10:00:00Z"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "car_details": {
+    "id": 1,
+    "customer": 1,
+    "customer_name": "John Doe",
+    "make": "Toyota",
+    "model": "Corolla",
+    "year": 2020,
+    "license_plate": "123ABC",
+    "vin": "1HGBH41JXMN109186",
+    "fuel_type": "gasoline",
+    "mileage": 15000,
+    "created_at": "2023-04-01T12:00:00Z",
+    "updated_at": "2023-04-01T12:00:00Z"
+  },
+  "title": "Oil Change",
+  "description": "Regular oil change service",
+  "status": "scheduled",
+  "scheduled_date": "2023-04-20T10:00:00Z",
+  "completed_date": null,
+  "technician_notes": "[2023-04-15 11:30] Service rescheduled to 2023-04-20T10:00:00Z.",
+  "created_at": "2023-04-10T12:00:00Z",
+  "updated_at": "2023-04-15T11:30:00Z",
+  "items": []
+}
+```
+
+### Get Upcoming Services
+```
+GET /api/services/upcoming/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "car": 1,
+      "car_details": {
+        "id": 1,
+        "customer": 1,
+        "customer_name": "John Doe",
+        "make": "Toyota",
+        "model": "Corolla",
+        "year": 2020,
+        "license_plate": "123ABC",
+        "vin": "1HGBH41JXMN109186",
+        "fuel_type": "gasoline",
+        "mileage": 15000,
+        "created_at": "2023-04-01T12:00:00Z",
+        "updated_at": "2023-04-01T12:00:00Z"
+      },
+      "title": "Oil Change",
+      "description": "Regular oil change service",
+      "status": "scheduled",
+      "scheduled_date": "2023-04-15T10:00:00Z",
+      "completed_date": null,
+      "technician_notes": null,
+      "created_at": "2023-04-10T12:00:00Z",
+      "updated_at": "2023-04-10T12:00:00Z",
+      "items": []
+    }
+  ]
+}
+```
+
+### Get In-Progress Services
+```
+GET /api/services/in_progress/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+Similar to the Get Upcoming Services response but with services that have status="in_progress"
+
+### Get Completed Services
+```
+GET /api/services/completed/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+Similar to the Get Upcoming Services response but with services that have status="completed"
+
+### Get Service Statistics
+```
+GET /api/services/statistics/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "by_status": {
+    "scheduled": 5,
+    "in_progress": 3,
+    "completed": 12,
+    "cancelled": 2,
+    "total": 22
+  },
+  "by_date_range": {
+    "today": 3,
+    "this_week": 8,
+    "this_month": 15
+  }
+}
+```
+
+### Bulk Update Services (Admin Only)
+```
+POST /api/services/bulk_update/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+file: [CSV file with service data]
+```
+
+**CSV Format:**
+```
+id,status,technician_notes
+1,completed,Oil change completed
+2,in_progress,Waiting for parts
+3,cancelled,Customer cancelled
+```
+
+**Response:**
+```json
+{
+  "updated_services": 3,
+  "errors": []
+}
+```
+
 ### Send Service Completion SMS
 ```
 POST /api/services/{service_id}/send_sms_notification/
@@ -387,6 +1105,394 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 ```
 
 ## Invoices
+
+### List Invoices
+```
+GET /api/invoices/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Query Parameters:**
+```
+status - Filter by status (draft, pending, paid, cancelled)
+date_from - Filter by issued date (ISO format, e.g., 2023-04-01)
+date_to - Filter by issued date (ISO format, e.g., 2023-04-30)
+service - Filter by service ID
+customer - Filter by customer ID (staff only)
+search - Search by invoice number or notes
+order_by - Order by field (default: -issued_date)
+```
+
+**Response:**
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 1,
+      "service": 1,
+      "service_details": {
+        "id": 1,
+        "car": 1,
+        "car_details": {
+          "id": 1,
+          "customer": 1,
+          "customer_name": "John Doe",
+          "make": "Toyota",
+          "model": "Corolla",
+          "year": 2020,
+          "license_plate": "123ABC",
+          "vin": "1HGBH41JXMN109186",
+          "fuel_type": "gasoline",
+          "mileage": 15000,
+          "created_at": "2023-04-01T12:00:00Z",
+          "updated_at": "2023-04-01T12:00:00Z"
+        },
+        "title": "Oil Change",
+        "description": "Regular oil change service",
+        "status": "completed",
+        "scheduled_date": "2023-04-15T10:00:00Z",
+        "completed_date": "2023-04-15T11:30:00Z",
+        "technician_notes": "Used synthetic oil",
+        "created_at": "2023-04-10T12:00:00Z",
+        "updated_at": "2023-04-15T11:30:00Z",
+        "items": []
+      },
+      "invoice_number": "INV-12345678",
+      "issued_date": "2023-04-15",
+      "due_date": "2023-04-30",
+      "status": "paid",
+      "notes": "Payment received",
+      "tax_rate": "19.00",
+      "pdf_file": "/media/invoices/invoice_12345678.pdf",
+      "created_at": "2023-04-15T12:00:00Z",
+      "updated_at": "2023-04-15T12:00:00Z",
+      "subtotal": "50.00",
+      "tax_amount": "9.50",
+      "total": "59.50"
+    }
+  ]
+}
+```
+
+### Get Invoice Details
+```
+GET /api/invoices/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "service": 1,
+  "service_details": {
+    "id": 1,
+    "car": 1,
+    "car_details": {
+      "id": 1,
+      "customer": 1,
+      "customer_name": "John Doe",
+      "make": "Toyota",
+      "model": "Corolla",
+      "year": 2020,
+      "license_plate": "123ABC",
+      "vin": "1HGBH41JXMN109186",
+      "fuel_type": "gasoline",
+      "mileage": 15000,
+      "created_at": "2023-04-01T12:00:00Z",
+      "updated_at": "2023-04-01T12:00:00Z"
+    },
+    "title": "Oil Change",
+    "description": "Regular oil change service",
+    "status": "completed",
+    "scheduled_date": "2023-04-15T10:00:00Z",
+    "completed_date": "2023-04-15T11:30:00Z",
+    "technician_notes": "Used synthetic oil",
+    "created_at": "2023-04-10T12:00:00Z",
+    "updated_at": "2023-04-15T11:30:00Z",
+    "items": []
+  },
+  "invoice_number": "INV-12345678",
+  "issued_date": "2023-04-15",
+  "due_date": "2023-04-30",
+  "status": "paid",
+  "notes": "Payment received",
+  "tax_rate": "19.00",
+  "pdf_file": "/media/invoices/invoice_12345678.pdf",
+  "created_at": "2023-04-15T12:00:00Z",
+  "updated_at": "2023-04-15T12:00:00Z",
+  "subtotal": "50.00",
+  "tax_amount": "9.50",
+  "total": "59.50"
+}
+```
+
+### Create Invoice with PDF Upload
+```
+POST /api/invoices/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+service: 1
+invoice_number: INV-12345678
+issued_date: 2023-04-15
+due_date: 2023-04-30
+status: pending
+notes: New invoice for oil change
+tax_rate: 19.00
+pdf_file: [PDF file upload]
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "service": 1,
+  "service_details": {
+    "id": 1,
+    "car": 1,
+    "car_details": {
+      "id": 1,
+      "customer": 1,
+      "customer_name": "John Doe",
+      "make": "Toyota",
+      "model": "Corolla",
+      "year": 2020,
+      "license_plate": "123ABC",
+      "vin": "1HGBH41JXMN109186",
+      "fuel_type": "gasoline",
+      "mileage": 15000,
+      "created_at": "2023-04-01T12:00:00Z",
+      "updated_at": "2023-04-01T12:00:00Z"
+    },
+    "title": "Oil Change",
+    "description": "Regular oil change service",
+    "status": "completed",
+    "scheduled_date": "2023-04-15T10:00:00Z",
+    "completed_date": "2023-04-15T11:30:00Z",
+    "technician_notes": "Used synthetic oil",
+    "created_at": "2023-04-10T12:00:00Z",
+    "updated_at": "2023-04-15T11:30:00Z",
+    "items": []
+  },
+  "invoice_number": "INV-12345678",
+  "issued_date": "2023-04-15",
+  "due_date": "2023-04-30",
+  "status": "pending",
+  "notes": "New invoice for oil change",
+  "tax_rate": "19.00",
+  "pdf_file": "/media/invoices/invoice_12345678.pdf",
+  "created_at": "2023-04-15T12:00:00Z",
+  "updated_at": "2023-04-15T12:00:00Z",
+  "subtotal": "50.00",
+  "tax_amount": "9.50",
+  "total": "59.50"
+}
+```
+
+### Update Invoice
+```
+PUT /api/invoices/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+service: 1
+invoice_number: INV-12345678
+issued_date: 2023-04-15
+due_date: 2023-04-30
+status: paid
+notes: Invoice paid on April 20
+tax_rate: 19.00
+pdf_file: [Optional PDF file upload]
+```
+
+**Response:**
+Same format as Get Invoice Details
+
+### Delete Invoice
+```
+DELETE /api/invoices/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```
+204 No Content
+```
+
+### Download Invoice PDF
+```
+GET /api/invoices/{id}/download/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```
+PDF file download
+```
+
+### Upload PDF for Existing Invoice
+```
+POST /api/invoices/{id}/upload_pdf/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+pdf_file: [PDF file upload]
+```
+
+**Response:**
+Same format as Get Invoice Details
+
+### Mark Invoice as Paid
+```
+POST /api/invoices/{id}/mark_as_paid/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "payment_notes": "Paid via bank transfer on April 20"
+}
+```
+
+**Response:**
+Same format as Get Invoice Details
+
+### Get Unpaid Invoices
+```
+GET /api/invoices/unpaid/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+Similar to List Invoices response but only showing invoices with status="pending"
+
+### Get Paid Invoices
+```
+GET /api/invoices/paid/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+Similar to List Invoices response but only showing invoices with status="paid"
+
+### Get Invoice Statistics
+```
+GET /api/invoices/statistics/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "by_status": {
+    "draft": 3,
+    "pending": 7,
+    "paid": 15,
+    "cancelled": 1,
+    "total": 26
+  },
+  "financials": {
+    "total_amount": 2457.50,
+    "total_paid": 1893.75,
+    "total_pending": 563.75,
+    "average_invoice": 94.52
+  },
+  "by_date_range": {
+    "today": 2,
+    "this_month": 12
+  }
+}
+```
+
+### Bulk Upload Invoices (Admin Only)
+```
+POST /api/invoices/bulk_upload/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+```
+metadata: [CSV file with invoice metadata]
+pdf_files: [Multiple PDF files]
+```
+
+**CSV Format:**
+```
+service_id,invoice_number,issued_date,due_date,status,notes,tax_rate,pdf_filename
+1,INV-001,2023-04-15,2023-04-30,pending,New invoice,19.00,invoice1.pdf
+2,INV-002,2023-04-16,2023-05-01,pending,New invoice,19.00,invoice2.pdf
+```
+
+**Response:**
+```json
+{
+  "created_invoices": 2,
+  "errors": []
+}
+```
 
 ### Send Invoice SMS
 ```

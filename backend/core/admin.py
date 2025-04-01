@@ -1,6 +1,38 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from .models import Customer, Car, Service, ServiceItem, Invoice, Notification
+from django import forms
+from django.contrib.auth.models import User
+from django.contrib.admin.widgets import AutocompleteSelect
+from django.contrib.admin import site
+
+# Unregister User if already registered (by another app like django.contrib.auth)
+if admin.site.is_registered(User):
+    admin.site.unregister(User)
+
+# Register User for autocomplete with enhanced configuration
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+    list_display = ['username', 'first_name', 'last_name', 'email', 'is_staff']
+    list_filter = ['is_staff', 'is_active']
+
+class CustomerForm(forms.ModelForm):
+    """Custom form for Customer that directly uses User model for name and email fields"""
+    
+    class Meta:
+        model = Customer
+        fields = ['user', 'phone', 'address']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Enhance the user field
+        self.fields['user'].widget.attrs.update({
+            'class': 'admin-autocomplete',
+            'style': 'width: 100%;',
+        })
+        # Make sure the widget has the correct admin site reference
+        self.fields['user'].widget.admin_site = site
 
 class CarInline(admin.TabularInline):
     model = Car
@@ -8,10 +40,12 @@ class CarInline(admin.TabularInline):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
+    form = CustomerForm
     list_display = ('id', 'get_full_name', 'phone', 'get_email', 'created_at')
     search_fields = ('user__first_name', 'user__last_name', 'user__email', 'phone')
     list_filter = ('created_at',)
     inlines = [CarInline]
+    autocomplete_fields = ['user']  # Use Django's built-in autocomplete
     
     def get_full_name(self, obj):
         return f"{obj.user.first_name} {obj.user.last_name}"

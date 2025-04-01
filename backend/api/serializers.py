@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification
 from django.utils.translation import gettext_lazy as _
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -121,4 +122,49 @@ class ChangePasswordSerializer(serializers.Serializer):
     def validate(self, data):
         if data['new_password'] != data['confirm_password']:
             raise serializers.ValidationError(_("New passwords don't match."))
+        return data
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Custom token serializer to include additional user data in the token response
+    """
+    
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        
+        # Add custom claims to the token
+        token['name'] = f"{user.first_name} {user.last_name}"
+        token['username'] = user.username
+        token['email'] = user.email
+        token['is_staff'] = user.is_staff
+        token['is_superuser'] = user.is_superuser
+        
+        # Add any other custom claims that might be useful
+        if hasattr(user, 'customer'):
+            token['customer_id'] = user.customer.id
+        
+        return token
+    
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        
+        # Add more data to the response
+        user = self.user
+        
+        # Add user information to the response
+        data['user'] = {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+        }
+        
+        # Add groups if the user belongs to any
+        if user.groups.exists():
+            data['user']['groups'] = list(user.groups.values_list('name', flat=True))
+        
         return data 
