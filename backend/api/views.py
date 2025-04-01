@@ -1,9 +1,10 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.contrib.auth.models import User
+from django.db.models import Q
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification
 from .serializers import (
     UserSerializer, CustomerSerializer, CarSerializer, 
@@ -12,28 +13,28 @@ from .serializers import (
     CustomTokenObtainPairSerializer
 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth.signals import user_logged_in
-from django.utils.translation import gettext_lazy as _
-from django.shortcuts import get_object_or_404
 from django_ratelimit.decorators import ratelimit
-from django.http import HttpResponse
-from auditlog.models import LogEntry
-from auditlog.registry import auditlog
 from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import authenticate, login, logout
+from django.http import HttpResponseRedirect
+from django.urls import reverse
+import logging
+from auditlog.registry import auditlog
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 from django.conf import settings
-from utils.sms_utils import send_sms
-from django.db.models import Count, Sum, Avg, Q, F
+from django.http import HttpResponse
+from django.utils.translation import gettext_lazy as _
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 import csv
 from io import StringIO
-from rest_framework.parsers import MultiPartParser, FormParser
-from django.contrib.auth.signals import user_logged_in
-import logging
-from utils.ip import get_client_ip
-from django.views.decorators.csrf import csrf_exempt
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from django.views.decorators.http import require_GET
+from django.shortcuts import redirect
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -94,6 +95,30 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAdminUser]
+    
+    @swagger_auto_schema(tags=['users'])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['users'])
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['users'])
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['users'])
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['users'])
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['users'])
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
 class CustomerViewSet(viewsets.ModelViewSet):
     """
@@ -110,6 +135,30 @@ class CustomerViewSet(viewsets.ModelViewSet):
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'phone']
     ordering_fields = ['user__last_name', 'user__email', 'created_at']
     ordering = ['-created_at']
+    
+    @swagger_auto_schema(tags=['customers'])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['customers'])
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['customers'])
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['customers'])
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['customers'])
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+        
+    @swagger_auto_schema(tags=['customers'])
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
     
     def get_queryset(self):
         """
@@ -137,6 +186,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @method_decorator(cache_page(settings.CACHE_TTL))
     @method_decorator(vary_on_cookie)
     @action(detail=False, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get current customer profile",
+        operation_description="Retrieve the authenticated user's customer profile",
+        tags=['customers']
+    )
     def me(self, request):
         """
         Retrieve the authenticated user's customer profile.
@@ -159,6 +213,11 @@ class CustomerViewSet(viewsets.ModelViewSet):
             )
     
     @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get customer statistics",
+        operation_description="Retrieve aggregated statistics about a customer's service history, cars, and invoices",
+        tags=['customers']
+    )
     def statistics(self, request, pk=None):
         """
         Retrieve statistics for a specific customer.
@@ -267,15 +326,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'])
     def cars(self, request, pk=None):
-        """
-        Get all cars for a customer
-        """
         customer = self.get_object()
         cars = Car.objects.filter(customer=customer)
         serializer = CarSerializer(cars, many=True)
         return Response(serializer.data)
     
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=False, methods=['post'])
     def bulk_create(self, request):
         """
         Create multiple customers from a CSV file
@@ -407,8 +463,6 @@ class CarViewSet(viewsets.ModelViewSet):
         except Customer.DoesNotExist:
             return Car.objects.none()
     
-    @method_decorator(cache_page(settings.CACHE_TTL))
-    @method_decorator(vary_on_cookie)
     @action(detail=True, methods=['get'])
     def services(self, request, pk=None):
         car = self.get_object()
@@ -423,6 +477,24 @@ class ServiceViewSet(viewsets.ModelViewSet):
     queryset = Service.objects.all()
     serializer_class = ServiceSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+    
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+    
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
     
     def get_queryset(self):
         queryset = Service.objects.all()
@@ -719,7 +791,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
         
         return Response(statistics)
     
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=False, methods=['post'])
     def bulk_update(self, request):
         """
         Bulk update services status (admin only)
@@ -1099,7 +1171,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 "detail": _("Failed to send SMS notification: {}").format(result.get('message'))
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    @action(detail=False, methods=['post'])
     def bulk_upload(self, request):
         """
         Upload multiple invoices with PDFs in one request (admin only)
@@ -1239,39 +1311,17 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notifications.update(is_read=True)
         return Response({"status": "all notifications marked as read"})
 
-class RegisterView(generics.CreateAPIView):
-    """
-    API endpoint for user registration
-    """
-    serializer_class = UserRegistrationSerializer
-    permission_classes = [permissions.AllowAny]
-    
-    @ratelimit(key='ip', rate='5/h', method='POST', block=True)
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def register_user(request):
+    serializer = UserRegistrationSerializer(data=request.data)
+    if serializer.is_valid():
         user = serializer.save()
-        
-        # Create customer profile for the new user
-        if not hasattr(user, 'customer'):
-            customer_data = {
-                'user': {
-                    'username': user.username,
-                    'email': user.email,
-                    'first_name': user.first_name,
-                    'last_name': user.last_name
-                },
-                'phone': request.data.get('phone', ''),
-                'address': request.data.get('address', '')
-            }
-            customer_serializer = CustomerSerializer(data=customer_data)
-            if customer_serializer.is_valid():
-                customer_serializer.save()
-        
-        return Response(
-            {"detail": _("User registered successfully")},
-            status=status.HTTP_201_CREATED
-        )
+        return Response({
+            'user': UserSerializer(user).data,
+            'message': 'User registered successfully',
+        }, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ChangePasswordView(generics.UpdateAPIView):
     """
@@ -1300,123 +1350,202 @@ class ChangePasswordView(generics.UpdateAPIView):
             status=status.HTTP_200_OK
         )
 
-# Fix the AttributeError in RateLimitedTokenObtainPairView
 class RateLimitedTokenObtainPairView(TokenObtainPairView):
     """
-    Custom token view with rate limiting to prevent brute force attacks.
-    This view extends the standard JWT token endpoint with rate limiting.
+    Takes a set of user credentials and returns an access and refresh JSON web
+    token pair to prove the authentication of those credentials.
+    
+    Rate limited to prevent brute force attacks.
     """
-    # Keep the original serializer_class
     serializer_class = CustomTokenObtainPairSerializer
+    method = "POST"
     
-    # Add method attribute required by ratelimit
-    method = 'POST'  # Required by ratelimit decorator
-    
-    # Apply rate limiting correctly using method_decorator
-    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST'))
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
     def dispatch(self, *args, **kwargs):
         return super().dispatch(*args, **kwargs)
-        
-    # Preserve the original post method logic
-    def post(self, request, *args, **kwargs):
-        response = super().post(request, *args, **kwargs)
-        
-        # If login was successful, trigger user_logged_in signal
-        if response.status_code == status.HTTP_200_OK and hasattr(self, 'user'):
-            user_logged_in.send(sender=self.user.__class__, request=request, user=self.user)
-            
-            # Log successful login
-            logger.info(f"User {self.user.username} successfully logged in from IP {get_client_ip(request)}")
-        
-        return response
 
-class TokenRefreshEndpoint(TokenRefreshView):
+class RateLimitedTokenRefreshView(TokenRefreshView):
     """
-    Custom token refresh endpoint with additional validation and logging.
     Takes a refresh type JSON web token and returns an access type JSON web
     token if the refresh token is valid.
+    
+    Rate limited to prevent brute force attacks.
     """
-    def post(self, request, *args, **kwargs):
-        # Call the parent post method to handle the token refresh
-        response = super().post(request, *args, **kwargs)
-        
-        # If refresh was successful, we can add additional logic here
-        if response.status_code == status.HTTP_200_OK:
-            # Add user info or custom claims to the response if available
-            # This could include permissions, role, etc.
-            if hasattr(request, 'user') and request.user.is_authenticated:
-                response.data['user_id'] = request.user.id
-                response.data['username'] = request.user.username
-            
-            # Log successful token refresh
-            logger.info(f"Token refreshed successfully from IP {get_client_ip(request)}")
-        
-        return response
+    method = "POST"
+    
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def blacklist_token(request):
-    """
-    Blacklist the refresh token to logout a user
-    """
-    try:
-        refresh_token = request.data.get('refresh')
-        if not refresh_token:
-            return Response({"error": "Refresh token is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        
-        # Log successful logout
-        logger.info(f"User {request.user.username} successfully logged out from IP {get_client_ip(request)}")
-        
-        return Response({"detail": "Successfully logged out"}, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+@csrf_exempt
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def test_token(request):
-    """
-    Test endpoint to verify that a token is valid and working.
-    """
-    user = request.user
-    data = {
-        'message': 'Token is valid',
-        'user': {
+@permission_classes([permissions.AllowAny])  # Allow any access for admin interface
+def get_user_data(request):
+    """Get user data for admin form"""
+    search_term = request.GET.get('search', '')
+    
+    # Special permission handling for admin usage
+    if not request.user.is_authenticated:
+        if not request.META.get('HTTP_X_REQUESTED_WITH') == 'XMLHttpRequest':
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+    # Search for users matching the search term
+    users = User.objects.filter(
+        Q(username__icontains=search_term) | 
+        Q(email__icontains=search_term) |
+        Q(first_name__icontains=search_term) |
+        Q(last_name__icontains=search_term)
+    )[:10]  # Limit to 10 results for performance
+
+    # Format the response
+    results = []
+    for user in users:
+        results.append({
             'id': user.id,
-            'username': user.username,
-            'email': user.email,
+            'text': f"{user.first_name} {user.last_name} ({user.username})",
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'is_staff': user.is_staff,
-            'is_superuser': user.is_superuser,
-        }
-    }
-    
-    # Add groups if the user belongs to any
-    if user.groups.exists():
-        data['user']['groups'] = list(user.groups.values_list('name', flat=True))
-    
-    return Response(data)
+            'email': user.email,
+            'username': user.username
+        })
 
-@api_view(['GET'])
+    return Response(results)
+
 @csrf_exempt
-def get_user_data(request, user_id):
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def admin_login(request):
     """
-    Simple endpoint to get user data for admin forms.
-    This is designed to be called from the admin interface.
+    Special login endpoint for admin users having issues with the standard login
     """
-    # Special permission handling - either the user is staff or they're in the admin interface
-    if not request.user.is_staff and '/admin/' not in request.META.get('HTTP_REFERER', ''):
-        return Response({"detail": "You do not have permission to perform this action."}, 
-                      status=status.HTTP_403_FORBIDDEN)
+    username = request.data.get('username')
+    password = request.data.get('password')
     
-    user = get_object_or_404(User, pk=user_id)
-    return Response({
-        'id': user.id,
-        'username': user.username,
-        'first_name': user.first_name,
-        'last_name': user.last_name,
-        'email': user.email,
-    })
+    print(f"Login attempt for user: {username}")
+    
+    if not username or not password:
+        return Response(
+            {"error": "Please provide both username and password"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    user = authenticate(request, username=username, password=password)
+    
+    if user is not None:
+        print(f"User authenticated: {user.username}, is_staff: {user.is_staff}")
+        login(request, user)
+        return Response({
+            "success": "Login successful",
+            "username": user.username,
+            "is_staff": user.is_staff,
+            "is_superuser": user.is_superuser
+        })
+    else:
+        print(f"Authentication failed for user: {username}")
+        return Response(
+            {"error": "Invalid credentials"},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Takes a set of user credentials and returns an access and refresh JSON web
+    token pair to prove the authentication of those credentials.
+    
+    Rate limited to prevent brute force attacks.
+    """
+    serializer_class = CustomTokenObtainPairSerializer
+    
+    @swagger_auto_schema(
+        operation_summary="Obtain JWT token pair",
+        operation_description="Authenticates with username and password to obtain a JWT token pair (access and refresh tokens)",
+        tags=['authentication'],
+        responses={
+            200: openapi.Response(
+                description="Successful authentication",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access': openapi.Schema(type=openapi.TYPE_STRING, description="JWT access token"),
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING, description="JWT refresh token"),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT, description="User information")
+                    }
+                ),
+                examples={
+                    'application/json': {
+                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'user': {
+                            'id': 1,
+                            'username': 'johndoe',
+                            'email': 'john@example.com',
+                            'is_staff': False
+                        }
+                    }
+                }
+            ),
+            401: "Invalid credentials"
+        }
+    )
+    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+class UserRegistrationView(generics.CreateAPIView):
+    """
+    API endpoint for user registration
+    """
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [permissions.AllowAny]
+    
+    @swagger_auto_schema(
+        operation_summary="Register new user",
+        operation_description="Register a new user account with username, email, password, and optional profile information",
+        tags=['authentication'],
+        responses={
+            201: openapi.Response(
+                description="Successfully registered",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT, description="User data"),
+                        'token': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING, description="Success message")
+                    }
+                ),
+                examples={
+                    'application/json': {
+                        'user': {
+                            'username': 'johndoe',
+                            'email': 'john@example.com',
+                            'first_name': 'John',
+                            'last_name': 'Doe'
+                        },
+                        'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
+                        'message': 'User registered successfully'
+                    }
+                }
+            ),
+            400: "Invalid data provided"
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        
+        # Generate token for the user
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'user': UserSerializer(user).data,
+            'token': str(refresh.access_token),
+            'message': _('User registered successfully')
+        }, status=status.HTTP_201_CREATED)
+
+@require_GET
+def custom_logout(request):
+    """Custom logout view that properly handles the 'next' parameter."""
+    next_url = request.GET.get('next', '/api/docs/')
+    logout(request)
+    return redirect(next_url)

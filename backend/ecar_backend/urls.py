@@ -21,41 +21,50 @@ from django.conf.urls.static import static
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
+from django.views.generic import TemplateView
+from api.views import custom_logout
 
 # API information for Swagger documentation
-api_info = openapi.Info(
-    title="ECAR API",
-    default_version='v1',
-    description="ECAR Garage Management System API",
-    terms_of_service="https://www.ecar.tn/terms/",
-    contact=openapi.Contact(email="support@ecar.tn"),
-    license=openapi.License(name="Proprietary"),
-)
-
-# Schema view for Swagger documentation
 schema_view = get_schema_view(
-    api_info,
+    openapi.Info(
+        title="ECAR API",
+        default_version='v1',
+        description="ECAR Garage Management System API",
+        terms_of_service="https://www.ecar.tn/terms/",
+        contact=openapi.Contact(email="support@ecar.tn"),
+        license=openapi.License(name="Proprietary"),
+    ),
     public=True,
-    permission_classes=[permissions.AllowAny],  # Allow anyone to access the docs during development
+    permission_classes=[permissions.AllowAny],
+    url=settings.DEBUG and "http://localhost:8000/" or "https://ecar.tn/",
 )
 
 urlpatterns = [
+    path('admin/logout/', custom_logout, name='admin_logout'),  # Custom logout view
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    path('api-auth/', include('rest_framework.urls')),
+    
+    # Admin login fix page
+    path('admin-login-fix/', TemplateView.as_view(
+        template_name='admin_login_fix.html',
+        content_type='text/html'
+    ), name='admin_login_fix'),
     
     # Swagger/OpenAPI documentation URLs
     path('api/docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('api/redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
-    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    path('api/swagger.json', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    path('api/swagger.yaml', schema_view.without_ui(cache_timeout=0), name='schema-yaml'),
 ]
 
-# Add static and media URLs for development
+# Add debug toolbar URLs in development
 if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-    
-    # Add Django Debug Toolbar URLs
     import debug_toolbar
-    urlpatterns += [
+    urlpatterns = [
         path('__debug__/', include(debug_toolbar.urls)),
-    ]
+    ] + urlpatterns
+
+# Serve static and media files in development
+urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

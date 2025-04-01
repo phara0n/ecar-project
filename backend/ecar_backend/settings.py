@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-sf&5=mdd7n16u!co7v&i8)ygr4c16x(_g7$k=cjvyuqqm!2-kh')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+DEBUG = True
 
 # Update ALLOWED_HOSTS to include 'backend' for Docker container access
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'backend']
@@ -191,6 +191,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -210,7 +211,7 @@ REST_FRAMEWORK = {
         'anon': '100/day',
         'user': '1000/day'
     },
-    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.openapi.AutoSchema',
 }
 
 # JWT Settings
@@ -250,6 +251,10 @@ RATELIMIT_ENABLE = True
 RATELIMIT_USE_CACHE = 'default'
 RATELIMIT_VIEW = 'api.views.ratelimited_error'
 RATELIMIT_KEY_FUNCTION = 'django_ratelimit.keys.ip'
+
+# Custom redirects
+LOGIN_REDIRECT_URL = '/api/docs/'
+LOGOUT_REDIRECT_URL = '/api/docs/'
 
 # Security Settings
 SESSION_COOKIE_SECURE = False  # Set to True in production
@@ -307,6 +312,12 @@ INTERNAL_IPS = [
     '127.0.0.1',
 ]
 
+# Debug toolbar for Docker
+if DEBUG:
+    import socket
+    hostname, _, ips = socket.gethostbyname_ex(socket.gethostname())
+    INTERNAL_IPS += [ip[:-1] + '1' for ip in ips]
+
 # Admin autocomplete settings
 AUTOCOMPLETE_ENABLE = True
 AUTOCOMPLETE_PAGE_SIZE = 20  # Number of results per page
@@ -322,15 +333,12 @@ SWAGGER_SETTINGS = {
         }
     },
     'USE_SESSION_AUTH': True,
-    'LOGIN_URL': 'admin:login',
-    'LOGOUT_URL': 'admin:logout',
-    'DEFAULT_API_URL': 'http://localhost:8000',
+    'LOGIN_URL': '/admin/login/',
+    'LOGOUT_URL': '/admin/logout/',
+    'DEFAULT_MODEL_DEPTH': 1,
     'VALIDATOR_URL': None,
-    'DEFAULT_INFO': 'ecar_backend.urls.api_info',
-    'OPERATIONS_SORTER': 'alpha',
-    'TAGS_SORTER': 'alpha',
-    'DOC_EXPANSION': 'list',
-    'DEEP_LINKING': True,
-    'DEFAULT_MODEL_RENDERING': 'example',
-    'DEFAULT_MODEL_DEPTH': 3,
+    'DEFAULT_INFO': None,
 }
+
+# Django Authentication Settings
+LOGIN_URL = '/admin/login/'
