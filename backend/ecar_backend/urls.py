@@ -15,13 +15,38 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from rest_framework import permissions
+
+# API information for Swagger documentation
+api_info = openapi.Info(
+    title="ECAR API",
+    default_version='v1',
+    description="ECAR Garage Management System API",
+    terms_of_service="https://www.ecar.tn/terms/",
+    contact=openapi.Contact(email="support@ecar.tn"),
+    license=openapi.License(name="Proprietary"),
+)
+
+# Schema view for Swagger documentation
+schema_view = get_schema_view(
+    api_info,
+    public=True,
+    permission_classes=[permissions.AllowAny],  # Allow anyone to access the docs during development
+)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
+    
+    # Swagger/OpenAPI documentation URLs
+    path('api/docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('api/redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
 ]
 
 # Add static and media URLs for development

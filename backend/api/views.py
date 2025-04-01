@@ -97,13 +97,26 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class CustomerViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for customer management
+    API endpoints for managing customers in the ECAR system.
+    
+    This viewset provides CRUD operations for Customer objects and additional endpoints
+    for retrieving customer-specific data such as statistics, service history, and cars.
+    Staff users can access all customers while regular users can only access their own profile.
     """
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    filterset_fields = ['user__email', 'phone', 'address']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'phone']
+    ordering_fields = ['user__last_name', 'user__email', 'created_at']
+    ordering = ['-created_at']
     
     def get_queryset(self):
+        """
+        Filter customers based on user permissions and search parameters.
+        Regular users only see their own profile, while staff can see all customers
+        and perform searches.
+        """
         queryset = Customer.objects.all()
         
         if not self.request.user.is_staff:
@@ -125,6 +138,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @method_decorator(vary_on_cookie)
     @action(detail=False, methods=['get'])
     def me(self, request):
+        """
+        Retrieve the authenticated user's customer profile.
+        
+        Returns the complete customer profile for the currently authenticated user.
+        This endpoint is cached for performance.
+        
+        Returns:
+            200 OK: Customer profile data
+            404 Not Found: If the user doesn't have a customer profile
+        """
         try:
             customer = Customer.objects.get(user=request.user)
             serializer = self.get_serializer(customer)
@@ -138,7 +161,23 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def statistics(self, request, pk=None):
         """
-        Get statistics for a customer including service count, car count, etc.
+        Retrieve statistics for a specific customer.
+        
+        Returns aggregated statistics about a customer's service history, cars,
+        and invoice payment status.
+        
+        Parameters:
+            pk (int): Customer ID
+            
+        Returns:
+            200 OK: Dictionary with the following statistics:
+                - total_cars: Number of cars owned by the customer
+                - total_services: Total number of services for the customer's cars
+                - completed_services: Number of completed services
+                - total_amount_spent: Total amount spent on services
+                - paid_invoices: Number of paid invoices
+                - pending_invoices: Number of pending invoices
+                - last_service_date: Date of the most recent service
         """
         customer = self.get_object()
         
@@ -177,7 +216,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'])
     def service_history(self, request, pk=None):
         """
-        Get complete service history for a customer
+        Retrieve the complete service history for a customer.
+        
+        Returns a list of all services performed on all cars owned by the customer,
+        ordered by scheduled date (newest first).
+        
+        Parameters:
+            pk (int): Customer ID
+            
+        Returns:
+            200 OK: List of service objects with related data
         """
         customer = self.get_object()
         services = Service.objects.filter(car__customer=customer).order_by('-scheduled_date')
@@ -187,7 +235,20 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'])
     def update_address(self, request, pk=None):
         """
-        Update just the customer's address
+        Update a customer's address.
+        
+        Allows partial update of just the address field without affecting other
+        customer data.
+        
+        Parameters:
+            pk (int): Customer ID
+            
+        Request Body:
+            address (string): New address for the customer
+            
+        Returns:
+            200 OK: Updated customer data
+            400 Bad Request: If address is missing from the request
         """
         customer = self.get_object()
         address = request.data.get('address', None)
