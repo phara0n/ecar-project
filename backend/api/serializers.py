@@ -116,10 +116,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = ['id', 'service', 'service_id', 'invoice_number', 'issued_date', 
-                 'due_date', 'status', 'subtotal', 
-                 'total', 'notes', 'pdf_file', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'invoice_number', 'subtotal', 
-                          'total', 'created_at', 'updated_at']
+                 'due_date', 'status', 'subtotal', 'total', 'notes', 'pdf_file', 
+                 'refund_date', 'refund_amount', 'refund_reason',
+                 'created_at', 'updated_at']
+        read_only_fields = ['id', 'invoice_number', 'subtotal', 'total', 
+                           'created_at', 'updated_at']
 
 class NotificationSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

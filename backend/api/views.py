@@ -1050,6 +1050,76 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(invoice)
         return Response(serializer.data)
     
+    @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_summary="Process refund for invoice",
+        operation_description="Refund a paid invoice and record refund details",
+        tags=['invoices'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['refund_reason'],
+            properties={
+                'refund_amount': openapi.Schema(
+                    type=openapi.TYPE_NUMBER,
+                    description="Amount to be refunded (defaults to full invoice amount if not specified)"
+                ),
+                'refund_reason': openapi.Schema(
+                    type=openapi.TYPE_STRING,
+                    description="Reason for the refund"
+                )
+            }
+        ),
+        responses={
+            200: InvoiceSerializer,
+            400: "Bad request - invoice cannot be refunded",
+            404: "Invoice not found"
+        }
+    )
+    def refund(self, request, pk=None):
+        """
+        Process refund for a paid invoice
+        """
+        invoice = self.get_object()
+        
+        # Check if invoice can be refunded (must be in paid status)
+        if invoice.status != 'paid':
+            return Response(
+                {"detail": _("Only paid invoices can be refunded")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get refund amount (defaults to full amount)
+        refund_amount = request.data.get('refund_amount', invoice.total)
+        
+        # Refund reason is required
+        refund_reason = request.data.get('refund_reason')
+        if not refund_reason:
+            return Response(
+                {"detail": _("Refund reason is required")},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Process the refund
+        invoice.status = 'refunded'
+        invoice.refund_date = timezone.now().date()
+        invoice.refund_amount = refund_amount
+        invoice.refund_reason = refund_reason
+        invoice.save()
+        
+        # Create notification for customer
+        Notification.objects.create(
+            customer=invoice.service.car.customer,
+            title=_('Invoice Refunded'),
+            message=_('Your invoice #%(number)s has been refunded for %(amount)s.') % {
+                'number': invoice.invoice_number,
+                'amount': invoice.refund_amount
+            },
+            notification_type='invoice'
+        )
+        
+        serializer = self.get_serializer(invoice)
+        return Response(serializer.data)
+    
     @action(detail=False, methods=['get'])
     def unpaid(self, request):
         """
@@ -1083,6 +1153,28 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get refunded invoices",
+        operation_description="Returns a list of all refunded invoices the user has access to view",
+        tags=['invoices'],
+        responses={200: InvoiceSerializer(many=True)}
+    )
+    def refunded(self, request):
+        """
+        Get refunded invoices
+        """
+        queryset = self.get_queryset().filter(status='refunded')
+        
+        # Paginate the response
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
     def statistics(self, request):
         """
         Get invoice statistics
@@ -1095,54 +1187,78 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         pending_count = queryset.filter(status='pending').count()
         paid_count = queryset.filter(status='paid').count()
         cancelled_count = queryset.filter(status='cancelled').count()
+        refunded_count = queryset.filter(status='refunded').count()
         
         # Calculate total amounts
-        from django.db.models import Sum, F
+        from django.db.models import Sum, F, DecimalField
+        from django.db.models.functions import Coalesce
         
-        # Note: We're using the calculated property 'total', so we need to handle this in Python
-        # This isn't optimal for large datasets but works for our purpose
-        total_amount = sum(invoice.total for invoice in queryset)
-        total_paid = sum(invoice.total for invoice in queryset.filter(status='paid'))
-        total_pending = sum(invoice.total for invoice in queryset.filter(status='pending'))
+        # Get total invoice amount
+        total_invoice_amount = queryset.filter(status__in=['paid', 'refunded']).aggregate(
+            total=Coalesce(Sum('total'), 0, output_field=DecimalField())
+        )['total'] or 0
         
-        # Get counts by date ranges
-        from django.utils import timezone
-        now = timezone.now()
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Get total refunded amount
+        total_refunded_amount = queryset.filter(status='refunded').aggregate(
+            total=Coalesce(Sum('refund_amount'), 0, output_field=DecimalField())
+        )['total'] or 0
         
-        # Filter by issued_date for date ranges
-        today_invoices = queryset.filter(
-            issued_date=today_start.date()
-        ).count()
+        # Net revenue (total paid minus refunds)
+        net_revenue = total_invoice_amount - total_refunded_amount
         
-        # Get this month's invoices
-        this_month_start = today_start.replace(day=1)
-        this_month_invoices = queryset.filter(
-            issued_date__gte=this_month_start.date(),
-            issued_date__lte=now.date()
-        ).count()
+        # Calculate recent trends
+        current_month = timezone.now().month
+        current_year = timezone.now().year
         
-        statistics = {
-            'by_status': {
+        # This month's invoices
+        month_invoices = queryset.filter(
+            issued_date__month=current_month,
+            issued_date__year=current_year
+        )
+        
+        month_invoice_count = month_invoices.count()
+        month_paid_count = month_invoices.filter(status='paid').count()
+        month_refunded_count = month_invoices.filter(status='refunded').count()
+        
+        # This month's revenue
+        month_revenue = month_invoices.filter(status__in=['paid', 'refunded']).aggregate(
+            total=Coalesce(Sum('total'), 0, output_field=DecimalField())
+        )['total'] or 0
+        
+        # This month's refunds
+        month_refunds = month_invoices.filter(status='refunded').aggregate(
+            total=Coalesce(Sum('refund_amount'), 0, output_field=DecimalField())
+        )['total'] or 0
+        
+        # Net revenue for the month
+        month_net_revenue = month_revenue - month_refunds
+        
+        # Return statistics as a response
+        stats = {
+            'total_count': queryset.count(),
+            'status_counts': {
                 'draft': draft_count,
                 'pending': pending_count,
                 'paid': paid_count,
                 'cancelled': cancelled_count,
-                'total': queryset.count()
+                'refunded': refunded_count
             },
-            'financials': {
-                'total_amount': float(total_amount),
-                'total_paid': float(total_paid),
-                'total_pending': float(total_pending),
-                'average_invoice': float(total_amount / queryset.count()) if queryset.count() > 0 else 0
+            'financial': {
+                'total_invoice_amount': total_invoice_amount,
+                'total_refunded_amount': total_refunded_amount,
+                'net_revenue': net_revenue
             },
-            'by_date_range': {
-                'today': today_invoices,
-                'this_month': this_month_invoices
+            'monthly': {
+                'invoice_count': month_invoice_count,
+                'paid_count': month_paid_count,
+                'refunded_count': month_refunded_count,
+                'revenue': month_revenue,
+                'refunds': month_refunds,
+                'net_revenue': month_net_revenue
             }
         }
         
-        return Response(statistics)
+        return Response(stats)
     
     @action(detail=True, methods=['post'])
     def send_sms_notification(self, request, pk=None):
