@@ -1,0 +1,2870 @@
+swagger: '2.0'
+info:
+  title: ECAR API
+  description: ECAR Garage Management System API
+  termsOfService: https://www.ecar.tn/terms/
+  contact:
+    email: support@ecar.tn
+  license:
+    name: Proprietary
+  version: v1
+host: localhost:8000
+schemes:
+- http
+basePath: /api
+consumes:
+- application/json
+produces:
+- application/json
+securityDefinitions:
+  Bearer:
+    type: apiKey
+    name: Authorization
+    in: header
+    description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization:
+      Bearer {token}"'
+security:
+- Bearer: []
+paths:
+  /admin-login/:
+    post:
+      operationId: admin-login_create
+      summary: Admin login
+      description: Special login endpoint for admin users. Returns a JWT token upon
+        successful authentication.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          required:
+          - username
+          - password
+          type: object
+          properties:
+            username:
+              description: Admin username
+              type: string
+            password:
+              description: Admin password
+              type: string
+      responses:
+        '200':
+          description: Successful authentication
+          schema:
+            type: object
+            properties:
+              success:
+                description: Success message
+                type: string
+              username:
+                description: Username
+                type: string
+              is_staff:
+                description: Staff status
+                type: boolean
+              is_superuser:
+                description: Superuser status
+                type: boolean
+        '400':
+          description: Invalid credentials
+        '401':
+          description: Authentication failed
+        '403':
+          description: Permission denied
+      tags:
+      - Authentication
+    parameters: []
+  /auth/change-password/:
+    put:
+      operationId: auth_change-password_update
+      description: API endpoint for changing password
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/ChangePassword'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/ChangePassword'
+      tags:
+      - auth
+    patch:
+      operationId: auth_change-password_partial_update
+      description: API endpoint for changing password
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/ChangePassword'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/ChangePassword'
+      tags:
+      - auth
+    parameters: []
+  /auth/register/:
+    post:
+      operationId: auth_register_create
+      summary: Register new user
+      description: Register a new user account with username, email, password, and
+        optional profile information
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/UserRegistration'
+      responses:
+        '201':
+          description: Successfully registered
+          schema:
+            type: object
+            properties:
+              user:
+                description: User data
+                type: object
+              token:
+                description: Access token
+                type: string
+              message:
+                description: Success message
+                type: string
+          examples:
+            application/json:
+              user:
+                username: johndoe
+                email: john@example.com
+                first_name: John
+                last_name: Doe
+              token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+              message: User registered successfully
+        '400':
+          description: Invalid data provided
+      tags:
+      - authentication
+    parameters: []
+  /auth/token/:
+    post:
+      operationId: auth_token_create
+      summary: Obtain JWT token pair
+      description: Authenticates with username and password to obtain a JWT token
+        pair (access and refresh tokens)
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/CustomTokenObtainPair'
+      responses:
+        '200':
+          description: Successful authentication
+          schema:
+            type: object
+            properties:
+              access:
+                description: JWT access token
+                type: string
+              refresh:
+                description: JWT refresh token
+                type: string
+              user:
+                description: User information
+                type: object
+          examples:
+            application/json:
+              access: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+              refresh: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+              user:
+                id: 1
+                username: johndoe
+                email: john@example.com
+                is_staff: false
+        '401':
+          description: Invalid credentials
+      tags:
+      - authentication
+    parameters: []
+  /auth/token/refresh/:
+    post:
+      operationId: auth_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/TokenRefresh'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/TokenRefresh'
+      tags:
+      - auth
+    parameters: []
+  /cars/:
+    get:
+      operationId: cars_list
+      description: API endpoint for car management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Car'
+      tags:
+      - cars
+    post:
+      operationId: cars_create
+      description: API endpoint for car management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Car'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Car'
+      tags:
+      - cars
+    parameters: []
+  /cars/{id}/:
+    get:
+      operationId: cars_read
+      description: API endpoint for car management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Car'
+      tags:
+      - cars
+    put:
+      operationId: cars_update
+      description: API endpoint for car management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Car'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Car'
+      tags:
+      - cars
+    patch:
+      operationId: cars_partial_update
+      description: API endpoint for car management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Car'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Car'
+      tags:
+      - cars
+    delete:
+      operationId: cars_delete
+      description: API endpoint for car management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - cars
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Car.
+      required: true
+      type: integer
+  /cars/{id}/services/:
+    get:
+      operationId: cars_services
+      description: API endpoint for car management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Car'
+      tags:
+      - cars
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Car.
+      required: true
+      type: integer
+  /customers/:
+    get:
+      operationId: customers_list
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    post:
+      operationId: customers_create
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Customer'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters: []
+  /customers/bulk_create/:
+    post:
+      operationId: customers_bulk_create
+      description: |-
+        Create multiple customers from a CSV file
+        Only available to staff users
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Customer'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters: []
+  /customers/export/:
+    get:
+      operationId: customers_export
+      description: |-
+        Export all customers as CSV
+        Only available to staff users
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters: []
+  /customers/me/:
+    get:
+      operationId: customers_me
+      summary: Get current customer profile
+      description: Retrieve the authenticated user's customer profile
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters: []
+  /customers/{id}/:
+    get:
+      operationId: customers_read
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    put:
+      operationId: customers_update
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Customer'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    patch:
+      operationId: customers_partial_update
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Customer'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    delete:
+      operationId: customers_delete
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - customers
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Customer.
+      required: true
+      type: integer
+  /customers/{id}/cars/:
+    get:
+      operationId: customers_cars
+      summary: API endpoints for managing customers in the ECAR system.
+      description: |-
+        This viewset provides CRUD operations for Customer objects and additional endpoints
+        for retrieving customer-specific data such as statistics, service history, and cars.
+        Staff users can access all customers while regular users can only access their own profile.
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Customer.
+      required: true
+      type: integer
+  /customers/{id}/service_history/:
+    get:
+      operationId: customers_service_history
+      summary: Retrieve the complete service history for a customer.
+      description: |-
+        Returns a list of all services performed on all cars owned by the customer,
+        ordered by scheduled date (newest first).
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Customer.
+      required: true
+      type: integer
+  /customers/{id}/statistics/:
+    get:
+      operationId: customers_statistics
+      summary: Get customer statistics
+      description: Retrieve aggregated statistics about a customer's service history,
+        cars, and invoices
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Customer.
+      required: true
+      type: integer
+  /customers/{id}/update_address/:
+    patch:
+      operationId: customers_update_address
+      summary: Update a customer's address.
+      description: |-
+        Allows partial update of just the address field without affecting other
+        customer data.
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Customer'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Customer'
+      tags:
+      - customers
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Customer.
+      required: true
+      type: integer
+  /get-user-data/:
+    get:
+      operationId: get-user-data_list
+      description: Get user data for admin form
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      tags:
+      - get-user-data
+    parameters: []
+  /invoices/:
+    get:
+      operationId: invoices_list
+      description: API endpoint for invoice management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    post:
+      operationId: invoices_create
+      description: Create invoice with uploaded PDF
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/bulk_upload/:
+    post:
+      operationId: invoices_bulk_upload
+      description: Upload multiple invoices with PDFs in one request (admin only)
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/paid/:
+    get:
+      operationId: invoices_paid
+      description: Get paid invoices
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/refunded/:
+    get:
+      operationId: invoices_refunded
+      summary: Get refunded invoices
+      description: Returns a list of all refunded invoices the user has access to
+        view
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/statistics/:
+    get:
+      operationId: invoices_statistics
+      description: Get invoice statistics
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/unpaid/:
+    get:
+      operationId: invoices_unpaid
+      description: Get unpaid invoices (status is pending)
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters: []
+  /invoices/{id}/:
+    get:
+      operationId: invoices_read
+      description: API endpoint for invoice management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    put:
+      operationId: invoices_update
+      description: Update invoice with optional PDF upload
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    patch:
+      operationId: invoices_partial_update
+      description: API endpoint for invoice management
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    delete:
+      operationId: invoices_delete
+      description: API endpoint for invoice management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /invoices/{id}/download/:
+    get:
+      operationId: invoices_download
+      description: Download invoice PDF
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /invoices/{id}/mark_as_paid/:
+    post:
+      operationId: invoices_mark_as_paid
+      description: Mark invoice as paid
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /invoices/{id}/refund/:
+    post:
+      operationId: invoices_refund
+      summary: Process refund for invoice
+      description: Refund a paid invoice and record refund details
+      parameters:
+      - name: refund_amount
+        in: formData
+        description: Amount to be refunded (defaults to full invoice amount if not
+          specified)
+        required: false
+        type: string
+        format: decimal
+      - name: refund_reason
+        in: formData
+        description: Reason for the refund
+        required: true
+        type: string
+        minLength: 1
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+        '400':
+          description: Bad request - invoice cannot be refunded
+        '404':
+          description: Invoice not found
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /invoices/{id}/send_sms_notification/:
+    post:
+      operationId: invoices_send_sms_notification
+      description: API endpoint for invoice management
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /invoices/{id}/upload_pdf/:
+    post:
+      operationId: invoices_upload_pdf
+      description: Upload PDF for an existing invoice
+      parameters:
+      - name: service_id
+        in: formData
+        required: true
+        type: integer
+      - name: due_date
+        in: formData
+        required: true
+        type: string
+        format: date
+      - name: status
+        in: formData
+        required: false
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      - name: notes
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      - name: pdf_file
+        in: formData
+        required: false
+        type: file
+        x-nullable: true
+      - name: refund_date
+        in: formData
+        required: false
+        type: string
+        format: date
+        x-nullable: true
+      - name: refund_amount
+        in: formData
+        required: false
+        type: string
+        format: decimal
+        x-nullable: true
+      - name: refund_reason
+        in: formData
+        required: false
+        type: string
+        x-nullable: true
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Invoice'
+      consumes:
+      - multipart/form-data
+      - application/x-www-form-urlencoded
+      tags:
+      - invoices
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Invoice.
+      required: true
+      type: integer
+  /notifications/:
+    get:
+      operationId: notifications_list
+      description: API endpoint for notification management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    post:
+      operationId: notifications_create
+      description: API endpoint for notification management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Notification'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    parameters: []
+  /notifications/mark_all_read/:
+    patch:
+      operationId: notifications_mark_all_read
+      description: API endpoint for notification management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Notification'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    parameters: []
+  /notifications/{id}/:
+    get:
+      operationId: notifications_read
+      description: API endpoint for notification management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    put:
+      operationId: notifications_update
+      description: API endpoint for notification management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Notification'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    patch:
+      operationId: notifications_partial_update
+      description: API endpoint for notification management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Notification'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    delete:
+      operationId: notifications_delete
+      description: API endpoint for notification management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - notifications
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Notification.
+      required: true
+      type: integer
+  /notifications/{id}/mark_read/:
+    patch:
+      operationId: notifications_mark_read
+      description: API endpoint for notification management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Notification'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Notification'
+      tags:
+      - notifications
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Notification.
+      required: true
+      type: integer
+  /service-items/:
+    get:
+      operationId: service-items_list
+      description: API endpoint for service item management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/ServiceItem'
+      tags:
+      - service-items
+    post:
+      operationId: service-items_create
+      description: API endpoint for service item management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/ServiceItem'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/ServiceItem'
+      tags:
+      - service-items
+    parameters: []
+  /service-items/{id}/:
+    get:
+      operationId: service-items_read
+      description: API endpoint for service item management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/ServiceItem'
+      tags:
+      - service-items
+    put:
+      operationId: service-items_update
+      description: API endpoint for service item management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/ServiceItem'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/ServiceItem'
+      tags:
+      - service-items
+    patch:
+      operationId: service-items_partial_update
+      description: API endpoint for service item management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/ServiceItem'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/ServiceItem'
+      tags:
+      - service-items
+    delete:
+      operationId: service-items_delete
+      description: API endpoint for service item management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - service-items
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service Item.
+      required: true
+      type: integer
+  /services/:
+    get:
+      operationId: services_list
+      description: API endpoint for service management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Service'
+      tags:
+      - services
+    post:
+      operationId: services_create
+      description: API endpoint for service management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/bulk_update/:
+    post:
+      operationId: services_bulk_update
+      description: Bulk update services status (admin only)
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/completed/:
+    get:
+      operationId: services_completed
+      description: Get completed services
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/in_progress/:
+    get:
+      operationId: services_in_progress
+      description: Get services that are currently in progress
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/statistics/:
+    get:
+      operationId: services_statistics
+      description: Get service statistics
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/upcoming/:
+    get:
+      operationId: services_upcoming
+      description: Get upcoming services (scheduled for the future)
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters: []
+  /services/{id}/:
+    get:
+      operationId: services_read
+      description: API endpoint for service management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    put:
+      operationId: services_update
+      description: API endpoint for service management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    patch:
+      operationId: services_partial_update
+      description: API endpoint for service management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    delete:
+      operationId: services_delete
+      description: API endpoint for service management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/cancel/:
+    post:
+      operationId: services_cancel
+      description: Cancel a service
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/complete/:
+    post:
+      operationId: services_complete
+      description: Mark a service as completed
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/invoice/:
+    get:
+      operationId: services_invoice
+      description: API endpoint for service management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/items/:
+    get:
+      operationId: services_items
+      description: API endpoint for service management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/reschedule/:
+    post:
+      operationId: services_reschedule
+      description: Reschedule a service
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /services/{id}/send_sms_notification/:
+    post:
+      operationId: services_send_sms_notification
+      description: API endpoint for service management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/Service'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/Service'
+      tags:
+      - services
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Service.
+      required: true
+      type: integer
+  /users/:
+    get:
+      operationId: users_list
+      description: API endpoint for user management
+      parameters:
+      - name: search
+        in: query
+        description: A search term.
+        required: false
+        type: string
+      - name: ordering
+        in: query
+        description: Which field to use when ordering the results.
+        required: false
+        type: string
+      - name: limit
+        in: query
+        description: Number of results to return per page.
+        required: false
+        type: integer
+      - name: offset
+        in: query
+        description: The initial index from which to return the results.
+        required: false
+        type: integer
+      responses:
+        '200':
+          description: ''
+          schema:
+            required:
+            - count
+            - results
+            type: object
+            properties:
+              count:
+                type: integer
+              next:
+                type: string
+                format: uri
+                x-nullable: true
+              previous:
+                type: string
+                format: uri
+                x-nullable: true
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/User'
+      tags:
+      - users
+    post:
+      operationId: users_create
+      description: API endpoint for user management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/User'
+      responses:
+        '201':
+          description: ''
+          schema:
+            $ref: '#/definitions/User'
+      tags:
+      - users
+    parameters: []
+  /users/{id}/:
+    get:
+      operationId: users_read
+      description: API endpoint for user management
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/User'
+      tags:
+      - users
+    put:
+      operationId: users_update
+      description: API endpoint for user management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/User'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/User'
+      tags:
+      - users
+    patch:
+      operationId: users_partial_update
+      description: API endpoint for user management
+      parameters:
+      - name: data
+        in: body
+        required: true
+        schema:
+          $ref: '#/definitions/User'
+      responses:
+        '200':
+          description: ''
+          schema:
+            $ref: '#/definitions/User'
+      tags:
+      - users
+    delete:
+      operationId: users_delete
+      description: API endpoint for user management
+      parameters: []
+      responses:
+        '204':
+          description: ''
+      tags:
+      - users
+    parameters:
+    - name: id
+      in: path
+      description: A unique integer value identifying this Utilisateur.
+      required: true
+      type: integer
+definitions:
+  ChangePassword:
+    required:
+    - old_password
+    - new_password
+    - confirm_password
+    type: object
+    properties:
+      old_password:
+        title: Old password
+        type: string
+        minLength: 1
+      new_password:
+        title: New password
+        type: string
+        minLength: 1
+      confirm_password:
+        title: Confirm password
+        type: string
+        minLength: 1
+  UserRegistration:
+    required:
+    - username
+    - password
+    - password_confirm
+    - email
+    - first_name
+    - last_name
+    type: object
+    properties:
+      username:
+        title: Nom d’utilisateur
+        description: Requis. 150 caractères maximum. Uniquement des lettres, nombres
+          et les caractères « @ », « . », « + », « - » et « _ ».
+        type: string
+        pattern: ^[\w.@+-]+$
+        maxLength: 150
+        minLength: 1
+      password:
+        title: Password
+        type: string
+        minLength: 1
+      password_confirm:
+        title: Password confirm
+        type: string
+        minLength: 1
+      email:
+        title: Adresse électronique
+        type: string
+        format: email
+        maxLength: 254
+      first_name:
+        title: Prénom
+        type: string
+        maxLength: 150
+      last_name:
+        title: Nom
+        type: string
+        maxLength: 150
+      phone:
+        title: Phone
+        type: string
+        minLength: 1
+      address:
+        title: Address
+        type: string
+        minLength: 1
+  CustomTokenObtainPair:
+    required:
+    - username
+    - password
+    type: object
+    properties:
+      username:
+        title: Username
+        type: string
+        minLength: 1
+      password:
+        title: Password
+        type: string
+        minLength: 1
+  TokenRefresh:
+    required:
+    - refresh
+    type: object
+    properties:
+      refresh:
+        title: Refresh
+        type: string
+        minLength: 1
+      access:
+        title: Access
+        type: string
+        readOnly: true
+        minLength: 1
+  User:
+    required:
+    - username
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      username:
+        title: Nom d’utilisateur
+        description: Requis. 150 caractères maximum. Uniquement des lettres, nombres
+          et les caractères « @ », « . », « + », « - » et « _ ».
+        type: string
+        pattern: ^[\w.@+-]+$
+        maxLength: 150
+        minLength: 1
+      email:
+        title: Adresse électronique
+        type: string
+        format: email
+        maxLength: 254
+      first_name:
+        title: Prénom
+        type: string
+        maxLength: 150
+      last_name:
+        title: Nom
+        type: string
+        maxLength: 150
+  Customer:
+    required:
+    - user
+    - phone
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      user:
+        $ref: '#/definitions/User'
+      phone:
+        title: Phone Number
+        type: string
+        maxLength: 20
+        minLength: 1
+      address:
+        title: Address
+        type: string
+        x-nullable: true
+      created_at:
+        title: Created at
+        type: string
+        format: date-time
+        readOnly: true
+      updated_at:
+        title: Updated at
+        type: string
+        format: date-time
+        readOnly: true
+  Car:
+    required:
+    - customer_id
+    - make
+    - model
+    - year
+    - license_plate
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      customer:
+        $ref: '#/definitions/Customer'
+      customer_id:
+        title: Customer id
+        type: integer
+      make:
+        title: Make
+        type: string
+        maxLength: 50
+        minLength: 1
+      model:
+        title: Model
+        type: string
+        maxLength: 50
+        minLength: 1
+      year:
+        title: Year
+        type: integer
+        maximum: 2147483647
+        minimum: 0
+      license_plate:
+        title: License Plate
+        type: string
+        maxLength: 20
+        minLength: 1
+      vin:
+        title: VIN
+        type: string
+        maxLength: 17
+        x-nullable: true
+      fuel_type:
+        title: Fuel Type
+        type: string
+        enum:
+        - gasoline
+        - diesel
+        - electric
+        - hybrid
+      mileage:
+        title: Mileage
+        type: integer
+        maximum: 2147483647
+        minimum: 0
+      created_at:
+        title: Created at
+        type: string
+        format: date-time
+        readOnly: true
+      updated_at:
+        title: Updated at
+        type: string
+        format: date-time
+        readOnly: true
+  Invoice:
+    required:
+    - service_id
+    - due_date
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      service:
+        title: Service
+        type: string
+        readOnly: true
+      service_id:
+        title: Service id
+        type: integer
+      invoice_number:
+        title: Invoice Number
+        type: string
+        readOnly: true
+        minLength: 1
+      issued_date:
+        title: Issued Date
+        type: string
+        format: date
+        readOnly: true
+      due_date:
+        title: Due Date
+        type: string
+        format: date
+      status:
+        title: État
+        type: string
+        enum:
+        - draft
+        - pending
+        - paid
+        - refunded
+        - cancelled
+      subtotal:
+        title: Subtotal
+        type: string
+        readOnly: true
+      total:
+        title: Total
+        type: string
+        readOnly: true
+      notes:
+        title: Notes
+        type: string
+        x-nullable: true
+      pdf_file:
+        title: PDF File
+        type: string
+        readOnly: true
+        x-nullable: true
+        format: uri
+      refund_date:
+        title: Refund Date
+        type: string
+        format: date
+        x-nullable: true
+      refund_amount:
+        title: Refund Amount
+        type: string
+        format: decimal
+        x-nullable: true
+      refund_reason:
+        title: Refund Reason
+        type: string
+        x-nullable: true
+      created_at:
+        title: Created at
+        type: string
+        format: date-time
+        readOnly: true
+      updated_at:
+        title: Updated at
+        type: string
+        format: date-time
+        readOnly: true
+  Notification:
+    required:
+    - user_id
+    - title
+    - message
+    - notification_type
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      user:
+        $ref: '#/definitions/User'
+      user_id:
+        title: User id
+        type: integer
+      title:
+        title: Title
+        type: string
+        maxLength: 100
+        minLength: 1
+      message:
+        title: Message
+        type: string
+        minLength: 1
+      notification_type:
+        title: Type
+        type: string
+        enum:
+        - service_reminder
+        - service_update
+        - invoice
+        - general
+      is_read:
+        title: Read
+        type: boolean
+      created_at:
+        title: Created at
+        type: string
+        format: date-time
+        readOnly: true
+  ServiceItem:
+    required:
+    - service
+    - item_type
+    - name
+    - unit_price
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      service:
+        title: Service
+        type: integer
+      item_type:
+        title: Type
+        type: string
+        enum:
+        - part
+        - labor
+      name:
+        title: Nom
+        type: string
+        maxLength: 100
+        minLength: 1
+      description:
+        title: Description
+        type: string
+        x-nullable: true
+      quantity:
+        title: Quantity
+        type: integer
+        maximum: 2147483647
+        minimum: 0
+      unit_price:
+        title: Unit Price
+        type: string
+        format: decimal
+      total_price:
+        title: Total price
+        type: string
+        readOnly: true
+  Service:
+    required:
+    - car_id
+    - title
+    - description
+    - scheduled_date
+    type: object
+    properties:
+      id:
+        title: ID
+        type: integer
+        readOnly: true
+      car:
+        $ref: '#/definitions/Car'
+      car_id:
+        title: Car id
+        type: integer
+      title:
+        title: Service Title
+        type: string
+        maxLength: 100
+        minLength: 1
+      description:
+        title: Description
+        type: string
+        minLength: 1
+      status:
+        title: État
+        type: string
+        enum:
+        - scheduled
+        - in_progress
+        - completed
+        - cancelled
+      scheduled_date:
+        title: Scheduled Date
+        type: string
+        format: date-time
+      completed_date:
+        title: Completed Date
+        type: string
+        format: date-time
+        x-nullable: true
+      technician_notes:
+        title: Technician Notes
+        type: string
+        x-nullable: true
+      service_items:
+        type: array
+        items:
+          $ref: '#/definitions/ServiceItem'
+        readOnly: true
+      created_at:
+        title: Created at
+        type: string
+        format: date-time
+        readOnly: true
+      updated_at:
+        title: Updated at
+        type: string
+        format: date-time
+        readOnly: true
