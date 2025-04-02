@@ -11,8 +11,15 @@ const customEnglishMessages: TranslationMessages = {
     customers: 'Customers',
     vehicles: 'Vehicles',
     services: 'Services',
+    serviceItems: 'Service Items',
     invoices: 'Invoices',
     reports: 'Reports',
+    notifications: 'Notifications',
+    users: 'Staff Management',
+    roles: 'Roles',
+    permissions: 'Permissions',
+    securityLogs: 'Security Logs',
+    settings: 'Settings',
   },
   language: {
     current: 'English',
@@ -78,6 +85,27 @@ const customEnglishMessages: TranslationMessages = {
         updated_at: 'Updated At',
       },
     },
+    notifications: {
+      name: 'Notification |||| Notifications',
+      fields: {
+        id: 'ID',
+        type: 'Type',
+        message: 'Message',
+        read: 'Read',
+        created_at: 'Created At',
+      },
+    },
+    users: {
+      name: 'User |||| Users',
+      fields: {
+        id: 'ID',
+        username: 'Username',
+        email: 'Email',
+        role: 'Role',
+        created_at: 'Created At',
+        updated_at: 'Updated At',
+      },
+    },
   },
   dashboard: {
     welcome: 'Welcome to ECAR Garage Management',
@@ -85,6 +113,16 @@ const customEnglishMessages: TranslationMessages = {
     completed_services: 'Completed Services',
     revenue_this_month: 'Revenue this Month',
     new_customers: 'New Customers',
+  },
+  buttons: {
+    save: 'Save',
+    delete: 'Delete',
+    cancel: 'Cancel',
+    add: 'Add',
+    edit: 'Edit',
+    view: 'View',
+    back: 'Back',
+    next: 'Next',
   },
 };
 

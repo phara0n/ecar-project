@@ -7,6 +7,7 @@ import {
   SearchInput,
   EditButton,
   useTranslate,
+  FunctionField,
 } from 'react-admin';
 
 const customerFilters = [
@@ -20,8 +21,18 @@ const CustomerList = () => {
     <List filters={customerFilters}>
       <Datagrid>
         <TextField source="id" />
-        <TextField source="name" />
-        <EmailField source="email" />
+        <FunctionField
+          label="Name"
+          render={(record: any) => 
+            record?.user ? `${record.user.first_name} ${record.user.last_name}` : ''
+          }
+        />
+        <FunctionField
+          label="Email"
+          render={(record: any) => 
+            record?.user ? record.user.email : ''
+          }
+        />
         <TextField source="phone" />
         <TextField source="address" />
         <DateField source="created_at" />

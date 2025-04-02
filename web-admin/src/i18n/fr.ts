@@ -11,8 +11,15 @@ const customFrenchMessages: TranslationMessages = {
     customers: 'Clients',
     vehicles: 'Véhicules',
     services: 'Services',
+    serviceItems: 'Articles de service',
     invoices: 'Factures',
     reports: 'Rapports',
+    notifications: 'Notifications',
+    users: 'Gestion du personnel',
+    roles: 'Rôles',
+    permissions: 'Permissions',
+    securityLogs: 'Journaux de sécurité',
+    settings: 'Paramètres',
   },
   language: {
     current: 'Français',
@@ -78,6 +85,27 @@ const customFrenchMessages: TranslationMessages = {
         updated_at: 'Mis à jour le',
       },
     },
+    notifications: {
+      name: 'Notification |||| Notifications',
+      fields: {
+        id: 'ID',
+        type: 'Type',
+        message: 'Message',
+        read: 'Lu',
+        created_at: 'Créé le',
+      },
+    },
+    users: {
+      name: 'Utilisateur |||| Utilisateurs',
+      fields: {
+        id: 'ID',
+        username: 'Nom d\'utilisateur',
+        email: 'Email',
+        role: 'Rôle',
+        created_at: 'Créé le',
+        updated_at: 'Mis à jour le',
+      },
+    },
   },
   dashboard: {
     welcome: 'Bienvenue sur la gestion de garage ECAR',
@@ -85,6 +113,16 @@ const customFrenchMessages: TranslationMessages = {
     completed_services: 'Services terminés',
     revenue_this_month: 'Revenu ce mois-ci',
     new_customers: 'Nouveaux clients',
+  },
+  buttons: {
+    save: 'Enregistrer',
+    delete: 'Supprimer',
+    cancel: 'Annuler',
+    add: 'Ajouter',
+    edit: 'Modifier',
+    view: 'Voir',
+    back: 'Retour',
+    next: 'Suivant',
   },
 };
 

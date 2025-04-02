@@ -7,6 +7,7 @@ import {
   SearchInput,
   EditButton,
   useTranslate,
+  FunctionField,
 } from 'react-admin';
 
 const vehicleFilters = [
@@ -24,10 +25,14 @@ const VehicleList = () => {
         <TextField source="model" />
         <TextField source="year" />
         <TextField source="license_plate" />
-        <ReferenceField source="customer_id" reference="customers">
-          <TextField source="name" />
-        </ReferenceField>
-        <DateField source="created_at" />
+        <TextField source="fuel_type" />
+        <FunctionField
+          label="Customer"
+          render={(record: any) => 
+            record?.customer ? `${record.customer.user.first_name} ${record.customer.user.last_name}` : ''
+          }
+        />
+        <DateField source="created_at" showTime />
         <EditButton />
       </Datagrid>
     </List>
