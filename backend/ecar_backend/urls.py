@@ -21,7 +21,7 @@ from django.conf.urls.static import static
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework import permissions
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, RedirectView
 from api.views import custom_logout
 
 # API information for Swagger documentation
@@ -40,6 +40,8 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    # Add a root URL handler that redirects to the API documentation
+    path('', RedirectView.as_view(url='/api/docs/', permanent=False), name='home'),
     path('admin/logout/', custom_logout, name='admin_logout'),  # Custom logout view
     path('admin/', admin.site.urls),
     path('api/', include('api.urls')),
