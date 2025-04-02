@@ -1,40 +1,42 @@
-from django.shortcuts import render, get_object_or_404
-from rest_framework import viewsets, permissions, status, generics
+from django.shortcuts import render, get_object_or_404, redirect
+from rest_framework import viewsets, permissions, status, generics, filters
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.contrib.auth.models import User
-from django.db.models import Q
-from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification
+from django.db.models import Q, Sum, F, DecimalField, Case, When
+from django.db.models.functions import Coalesce
+from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification, ServiceInterval, MileageUpdate, ServiceHistory
 from .serializers import (
     UserSerializer, CustomerSerializer, CarSerializer, 
     ServiceSerializer, ServiceItemSerializer, InvoiceSerializer, 
     NotificationSerializer, UserRegistrationSerializer, ChangePasswordSerializer,
-    CustomTokenObtainPairSerializer
+    CustomTokenObtainPairSerializer, RefundRequestSerializer, MileageUpdateSerializer,
+    ServiceIntervalSerializer, ServicePredictionSerializer, ServiceHistorySerializer
 )
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
 from django_ratelimit.decorators import ratelimit
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from django.contrib.auth import authenticate, login, logout
-from django.http import HttpResponseRedirect
-from django.urls import reverse
-import logging
-from auditlog.registry import auditlog
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
-from django.conf import settings
-from django.http import HttpResponse
-from django.utils.translation import gettext_lazy as _
-from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.utils import timezone
-import csv
-from io import StringIO
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
 from django.views.decorators.http import require_GET, require_http_methods
-from django.shortcuts import redirect
+from django.contrib.auth import authenticate, login, logout
+from django.http import HttpResponseRedirect, HttpResponse
+from django.urls import reverse
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+from rest_framework.parsers import MultiPartParser, FormParser
+from django_filters.rest_framework import DjangoFilterBackend
+import logging
+import csv
+import datetime
+from io import StringIO
+from drf_yasg.utils import swagger_auto_schema, no_body
+from drf_yasg import openapi
+from auditlog.registry import auditlog
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -90,11 +92,17 @@ class IsOwnerOrStaff(permissions.BasePermission):
 
 class UserViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for user management
+    API endpoint that allows users to be viewed or edited.
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import UserDocsSerializer
+            return UserDocsSerializer
+        return self.serializer_class
     
     @swagger_auto_schema(tags=['users'])
     def list(self, request, *args, **kwargs):
@@ -122,15 +130,19 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class CustomerViewSet(viewsets.ModelViewSet):
     """
-    API endpoints for managing customers in the ECAR system.
-    
-    This viewset provides CRUD operations for Customer objects and additional endpoints
-    for retrieving customer-specific data such as statistics, service history, and cars.
-    Staff users can access all customers while regular users can only access their own profile.
+    API endpoint that allows customers to be viewed or edited.
+    Users can only view and edit their own customer profile.
     """
+    serializer_class = CustomerSerializer  
+    permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import CustomerDocsSerializer
+            return CustomerDocsSerializer
+        return self.serializer_class
+    
     queryset = Customer.objects.all()
-    serializer_class = CustomerSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
     filterset_fields = ['user__email', 'phone', 'address']
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'phone']
     ordering_fields = ['user__last_name', 'user__email', 'created_at']
@@ -447,11 +459,21 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 class CarViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for car management
+    API endpoint that allows cars to be viewed or edited.
+    Users can only view and edit their own cars.
     """
-    queryset = Car.objects.all()
     serializer_class = CarSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['make', 'model', 'year', 'license_plate', 'fuel_type']
+    search_fields = ['make', 'model', 'year', 'license_plate', 'vin']
+    ordering_fields = ['make', 'model', 'year', 'license_plate']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import CarDocsSerializer
+            return CarDocsSerializer
+        return self.serializer_class
     
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -470,13 +492,140 @@ class CarViewSet(viewsets.ModelViewSet):
         serializer = ServiceSerializer(services, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        request_body=MileageUpdateSerializer,
+        operation_summary="Report current mileage",
+        operation_description="Car owners can report their current mileage",
+        tags=['vehicles']
+    )
+    def report_mileage(self, request, pk=None):
+        """
+        Allow car owners to report their current mileage.
+        Updates the car's mileage record and recalculates next service date.
+        """
+        car = self.get_object()
+        serializer = MileageUpdateSerializer(data=request.data, context={'car': car})
+        
+        if serializer.is_valid():
+            mileage_update = serializer.save(car=car)
+            
+            # Return the updated car with service predictions
+            car_serializer = self.get_serializer(car)
+            return Response(car_serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get next service prediction",
+        operation_description="Get estimated next service date and mileage",
+        responses={200: ServicePredictionSerializer},
+        tags=['vehicles']
+    )
+    def next_service_prediction(self, request, pk=None):
+        """
+        Get prediction for when the next service will be due based on 
+        mileage history and service intervals.
+        """
+        car = self.get_object()
+        # Recalculate predictions
+        next_service_date, next_service_mileage = car.calculate_next_service_date()
+        
+        # If we can't calculate a prediction due to insufficient data
+        if not next_service_date or not next_service_mileage:
+            return Response(ServicePredictionSerializer({
+                "has_prediction": False,
+                "next_service_date": None,
+                "next_service_mileage": None,
+                "days_until_service": None,
+                "mileage_until_service": None,
+                "average_daily_mileage": car.average_daily_mileage,
+                "service_type": None,
+                "service_description": None
+            }).data)
+        
+        # Find applicable service intervals for this car
+        service_intervals = ServiceInterval.objects.filter(
+            Q(car_make=car.make, car_model=car.model) | 
+            Q(car_make=car.make, car_model__isnull=True) |
+            Q(car_make__isnull=True, car_model__isnull=True),
+            is_active=True
+        ).order_by('-car_make', '-car_model')
+        
+        service_interval = service_intervals.first() if service_intervals.exists() else None
+        
+        days_until_service = (next_service_date - timezone.now().date()).days
+        mileage_until_service = next_service_mileage - car.mileage
+        
+        return Response(ServicePredictionSerializer({
+            "has_prediction": True,
+            "next_service_date": next_service_date,
+            "next_service_mileage": next_service_mileage,
+            "days_until_service": days_until_service,
+            "mileage_until_service": mileage_until_service,
+            "average_daily_mileage": car.average_daily_mileage,
+            "service_type": service_interval.name if service_interval else _("Regular Maintenance"),
+            "service_description": service_interval.description if service_interval else ""
+        }).data)
+        
+    @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get mileage history",
+        operation_description="Get the car's mileage update history",
+        tags=['vehicles']
+    )
+    def mileage_history(self, request, pk=None):
+        """Get the history of mileage updates for this car"""
+        car = self.get_object()
+        mileage_updates = MileageUpdate.objects.filter(car=car).order_by('-reported_date')
+        
+        # Use pagination if available
+        page = self.paginate_queryset(mileage_updates)
+        if page is not None:
+            serializer = MileageUpdateSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = MileageUpdateSerializer(mileage_updates, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get service history",
+        operation_description="Get the car's maintenance service history",
+        tags=['vehicles']
+    )
+    def service_history(self, request, pk=None):
+        """Get the service history for this car"""
+        car = self.get_object()
+        
+        service_history = ServiceHistory.objects.filter(car=car).order_by('-service_date')
+        
+        # Use pagination if available
+        page = self.paginate_queryset(service_history)
+        if page is not None:
+            serializer = ServiceHistorySerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+            
+        serializer = ServiceHistorySerializer(service_history, many=True)
+        return Response(serializer.data)
+
 class ServiceViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for service management
+    API endpoint that allows services to be viewed or edited.
+    Users can only view and edit services for their own cars.
     """
-    queryset = Service.objects.all()
     serializer_class = ServiceSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'scheduled_date', 'completed_date', 'is_routine_maintenance']
+    search_fields = ['title', 'description', 'technician_notes', 'car__license_plate']
+    ordering_fields = ['scheduled_date', 'completed_date', 'status']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import ServiceDocsSerializer
+            return ServiceDocsSerializer
+        return self.serializer_class
     
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -591,6 +740,22 @@ class ServiceViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_summary="Complete service",
+        operation_description="Mark a service as completed and record completion details",
+        tags=['services'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'technician_notes': openapi.Schema(type=openapi.TYPE_STRING, description='Notes about the completed service')
+            }
+        ),
+        responses={
+            200: "Service marked as completed successfully",
+            400: "Service is already completed",
+            404: "Service not found"
+        }
+    )
     def complete(self, request, pk=None):
         """
         Mark a service as completed
@@ -618,6 +783,22 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_summary="Cancel service",
+        operation_description="Cancel a scheduled or in-progress service",
+        tags=['services'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'reason': openapi.Schema(type=openapi.TYPE_STRING, description='Reason for cancellation')
+            }
+        ),
+        responses={
+            200: "Service cancelled successfully",
+            400: "Service is already cancelled or cannot be cancelled",
+            404: "Service not found"
+        }
+    )
     def cancel(self, request, pk=None):
         """
         Cancel a service
@@ -649,6 +830,23 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
+    @swagger_auto_schema(
+        operation_summary="Reschedule service",
+        operation_description="Reschedule a service to a new date",
+        tags=['services'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['scheduled_date'],
+            properties={
+                'scheduled_date': openapi.Schema(type=openapi.TYPE_STRING, format='date-time', description='New scheduled date for the service')
+            }
+        ),
+        responses={
+            200: "Service rescheduled successfully",
+            400: "Cannot reschedule or missing scheduled_date",
+            404: "Service not found"
+        }
+    )
     def reschedule(self, request, pk=None):
         """
         Reschedule a service
@@ -869,11 +1067,20 @@ class ServiceViewSet(viewsets.ModelViewSet):
 
 class ServiceItemViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for service item management
+    API endpoint that allows service items to be viewed or edited.
+    Users can only view and edit service items for their own services.
     """
-    queryset = ServiceItem.objects.all()
     serializer_class = ServiceItemSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'description']
+    ordering_fields = ['name', 'unit_price', 'quantity']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import ServiceItemDocsSerializer
+            return ServiceItemDocsSerializer
+        return self.serializer_class
     
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -887,12 +1094,22 @@ class ServiceItemViewSet(viewsets.ModelViewSet):
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for invoice management
+    API endpoint that allows invoices to be viewed or edited.
+    Users can only view invoices for their own services.
+    Only admins can create, update, or delete invoices.
     """
-    queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
-    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'due_date', 'issued_date']
+    search_fields = ['invoice_number', 'notes', 'service__car__license_plate']
+    ordering_fields = ['issued_date', 'due_date', 'status', 'total']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import InvoiceDocsSerializer
+            return InvoiceDocsSerializer
+        return self.serializer_class
     
     def get_queryset(self):
         queryset = Invoice.objects.all()
@@ -987,6 +1204,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Download invoice PDF",
+        operation_description="Download the PDF file for an invoice",
+        tags=['invoices'],
+        responses={
+            200: "Invoice PDF file",
+            404: "Invoice or PDF not found"
+        }
+    )
     def download(self, request, pk=None):
         """
         Download invoice PDF
@@ -1055,20 +1281,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         operation_summary="Process refund for invoice",
         operation_description="Refund a paid invoice and record refund details",
         tags=['invoices'],
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['refund_reason'],
-            properties={
-                'refund_amount': openapi.Schema(
-                    type=openapi.TYPE_NUMBER,
-                    description="Amount to be refunded (defaults to full invoice amount if not specified)"
-                ),
-                'refund_reason': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="Reason for the refund"
-                )
-            }
-        ),
+        request_body=RefundRequestSerializer,
         responses={
             200: InvoiceSerializer,
             400: "Bad request - invoice cannot be refunded",
@@ -1121,6 +1334,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get unpaid invoices",
+        operation_description="Returns a list of all unpaid invoices (status is pending) the user has access to view",
+        tags=['invoices'],
+        responses={200: InvoiceSerializer(many=True)}
+    )
     def unpaid(self, request):
         """
         Get unpaid invoices (status is pending)
@@ -1137,6 +1356,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get paid invoices",
+        operation_description="Returns a list of all paid invoices the user has access to view",
+        tags=['invoices'],
+        responses={200: InvoiceSerializer(many=True)}
+    )
     def paid(self, request):
         """
         Get paid invoices
@@ -1175,6 +1400,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=False, methods=['get'])
+    @swagger_auto_schema(
+        operation_summary="Get invoice statistics",
+        operation_description="Returns aggregated statistics about invoices including counts by status and financial metrics",
+        tags=['invoices'],
+        responses={
+            200: openapi.Response('Statistics', schema=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'count_by_status': openapi.Schema(type=openapi.TYPE_OBJECT, description='Number of invoices by status'),
+                    'financial': openapi.Schema(type=openapi.TYPE_OBJECT, description='Financial metrics'),
+                    'trends': openapi.Schema(type=openapi.TYPE_OBJECT, description='Recent trends')
+                }
+            ))
+        }
+    )
     def statistics(self, request):
         """
         Get invoice statistics
@@ -1396,21 +1636,34 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
 class NotificationViewSet(viewsets.ModelViewSet):
     """
-    API endpoint for notification management
+    API endpoint that allows notifications to be viewed or edited.
+    Users can only view their own notifications.
+    Only admins can create, update, or delete notifications.
     """
-    queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrStaff]
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['is_read', 'notification_type']
+    search_fields = ['title', 'message']
+    ordering_fields = ['created_at', 'is_read']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import NotificationDocsSerializer
+            return NotificationDocsSerializer
+        return self.serializer_class
     
     def get_queryset(self):
-        if self.request.user.is_staff:
-            return Notification.objects.all()
-        
-        try:
-            customer = Customer.objects.get(user=self.request.user)
-            return Notification.objects.filter(customer=customer)
-        except Customer.DoesNotExist:
+        """
+        Get all notifications for the current user
+        """
+        # Check if this is a swagger schema generation request
+        if getattr(self, 'swagger_fake_view', False):
+            # Return empty queryset for swagger schema generation
             return Notification.objects.none()
+            
+        customer = Customer.objects.get(user=self.request.user)
+        return Notification.objects.filter(customer=customer)
     
     @action(detail=True, methods=['patch'])
     def mark_read(self, request, pk=None):
@@ -1425,6 +1678,34 @@ class NotificationViewSet(viewsets.ModelViewSet):
         notifications.update(is_read=True)
         return Response({"status": "all notifications marked as read"})
 
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Register user",
+    operation_description="Register a new user with username, email, and password",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['username', 'email', 'password', 'password2'],
+        properties={
+            'username': openapi.Schema(type=openapi.TYPE_STRING, description='Username'),
+            'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email address'),
+            'password': openapi.Schema(type=openapi.TYPE_STRING, description='Password'),
+            'password2': openapi.Schema(type=openapi.TYPE_STRING, description='Confirm password'),
+            'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='First name'),
+            'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Last name'),
+        }
+    ),
+    responses={
+        201: openapi.Response('User created successfully', schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'user': openapi.Schema(type=openapi.TYPE_OBJECT, description='User data'),
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message')
+            }
+        )),
+        400: 'Invalid registration data'
+    },
+    tags=['Authentication']
+)
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def register_user(request):
@@ -1492,6 +1773,32 @@ class RateLimitedTokenRefreshView(TokenRefreshView):
         return super().dispatch(*args, **kwargs)
 
 @csrf_exempt
+@swagger_auto_schema(
+    method='get',
+    operation_summary="Get user data",
+    operation_description="Search for users by username, email, first name, or last name. Used in admin forms.",
+    manual_parameters=[
+        openapi.Parameter('search', openapi.IN_QUERY, description="Search term", type=openapi.TYPE_STRING)
+    ],
+    responses={
+        200: openapi.Response('List of matching users', schema=openapi.Schema(
+            type=openapi.TYPE_ARRAY,
+            items=openapi.Schema(
+                type=openapi.TYPE_OBJECT,
+                properties={
+                    'id': openapi.Schema(type=openapi.TYPE_INTEGER, description='User ID'),
+                    'text': openapi.Schema(type=openapi.TYPE_STRING, description='Display text'),
+                    'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='First name'),
+                    'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='Last name'),
+                    'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email address'),
+                    'username': openapi.Schema(type=openapi.TYPE_STRING, description='Username')
+                }
+            )
+        )),
+        401: 'Unauthorized'
+    },
+    tags=['Admin']
+)
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])  # Allow any access for admin interface
 def get_user_data(request):
@@ -1525,6 +1832,34 @@ def get_user_data(request):
 
     return Response(results)
 
+@swagger_auto_schema(
+    method='post',
+    operation_summary="Admin login",
+    operation_description="Special login endpoint for admin users. Returns a JWT token upon successful authentication.",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['username', 'password'],
+        properties={
+            'username': openapi.Schema(type=openapi.TYPE_STRING, description='Admin username'),
+            'password': openapi.Schema(type=openapi.TYPE_STRING, description='Admin password'),
+        }
+    ),
+    responses={
+        200: openapi.Response('Successful authentication', schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'success': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                'username': openapi.Schema(type=openapi.TYPE_STRING, description='Username'),
+                'is_staff': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Staff status'),
+                'is_superuser': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Superuser status')
+            }
+        )),
+        400: 'Invalid credentials',
+        401: 'Authentication failed',
+        403: 'Permission denied'
+    },
+    tags=['Authentication']
+)
 @csrf_exempt
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
@@ -1664,3 +1999,335 @@ def custom_logout(request):
     next_url = request.GET.get('next', '/admin/login/')
     logout(request)
     return redirect(next_url)
+
+class MileageUpdateViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint that allows mileage updates to be viewed or added.
+    Users can only view and add mileage updates for their own cars.
+    """
+    serializer_class = MileageUpdateSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['car']
+    ordering_fields = ['reported_date', 'mileage']
+    
+    def get_serializer_class(self):
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import MileageUpdateDocsSerializer
+            return MileageUpdateDocsSerializer
+        return self.serializer_class
+    
+    @swagger_auto_schema(
+        operation_summary="List mileage updates",
+        operation_description="List mileage updates for the authenticated user's vehicles",
+        tags=['vehicles']
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Create mileage update",
+        operation_description="Report a new mileage reading for a vehicle",
+        request_body=MileageUpdateSerializer,
+        tags=['vehicles']
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Retrieve mileage update",
+        operation_description="Get details of a specific mileage update",
+        tags=['vehicles']
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Update mileage update",
+        operation_description="Update a mileage reading (admin only)",
+        request_body=MileageUpdateSerializer,
+        tags=['vehicles']
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Partially update mileage update",
+        operation_description="Partially update a mileage reading (admin only)",
+        request_body=MileageUpdateSerializer,
+        tags=['vehicles']
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Delete mileage update",
+        operation_description="Delete a mileage reading (admin only)",
+        tags=['vehicles']
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+    
+    def get_queryset(self):
+        """
+        Return empty queryset for swagger schema generation to avoid AnonymousUser errors
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            return MileageUpdate.objects.none()
+        
+        # Regular users can only see their own mileage updates
+        if not self.request.user.is_staff:
+            return MileageUpdate.objects.filter(car__owner__user=self.request.user)
+        
+        # Staff can see all mileage updates
+        return MileageUpdate.objects.all()
+    
+    def perform_create(self, serializer):
+        """Add the car from the URL if provided"""
+        car_id = self.request.data.get('car_id')
+        if car_id:
+            car = get_object_or_404(Car, pk=car_id)
+            # Check permissions
+            if not self.request.user.is_staff and car.customer.user != self.request.user:
+                raise permissions.PermissionDenied(_("You don't have permission to update this car's mileage."))
+            serializer.save(car=car)
+        else:
+            serializer.save()
+
+# @swagger_auto_schema(auto_schema=None)
+class ServiceIntervalViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for service intervals.
+    
+    Service intervals define when a car is due for maintenance based on time, mileage, or both.
+    They can be global or specific to a car make and model.
+    """
+    queryset = ServiceInterval.objects.all()
+    serializer_class = ServiceIntervalSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['interval_type', 'car_make', 'car_model', 'is_active']
+    search_fields = ['name', 'description', 'car_make', 'car_model']
+    ordering_fields = ['name', 'mileage_interval', 'time_interval_days', 'car_make', 'car_model']
+    swagger_schema_fields = {
+        'manual_parameters': [],
+        'operation_id': 'serviceIntervals'
+    }
+    
+    def get_serializer_class(self):
+        """
+        Return a simplified serializer for Swagger schema generation
+        to avoid circular references
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import ServiceIntervalDocsSerializer
+            return ServiceIntervalDocsSerializer
+        return self.serializer_class
+    
+    @swagger_auto_schema(
+        operation_summary="List service intervals",
+        operation_description="List all service intervals",
+        tags=['vehicles']
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Create service interval",
+        operation_description="Create a new service interval (admin only)",
+        request_body=ServiceIntervalSerializer,
+        tags=['vehicles']
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Retrieve service interval",
+        operation_description="Get details of a specific service interval",
+        tags=['vehicles']
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Update service interval",
+        operation_description="Update a service interval (admin only)",
+        request_body=ServiceIntervalSerializer,
+        tags=['vehicles']
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Partially update service interval",
+        operation_description="Partially update a service interval (admin only)",
+        request_body=ServiceIntervalSerializer,
+        tags=['vehicles']
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Delete service interval",
+        operation_description="Delete a service interval (admin only)",
+        tags=['vehicles']
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+    
+    def get_queryset(self):
+        """
+        Return empty queryset for swagger schema generation to avoid AnonymousUser errors
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            return ServiceInterval.objects.none()
+        return super().get_queryset()
+    
+    @swagger_auto_schema(
+        operation_description="Get service intervals applicable to a specific car make and model",
+        operation_summary="Get vehicle-specific service intervals",
+        manual_parameters=[
+            openapi.Parameter('make', openapi.IN_QUERY, description="Car make", type=openapi.TYPE_STRING),
+            openapi.Parameter('model', openapi.IN_QUERY, description="Car model", type=openapi.TYPE_STRING),
+        ],
+        responses={
+            200: ServiceIntervalSerializer(many=True),
+            400: "Bad request"
+        }
+    )
+    @action(detail=False, methods=['get'], url_path='for_vehicle')
+    def for_vehicle(self, request):
+        """
+        Get service intervals applicable to a specific vehicle make and model
+        
+        Ordered from most specific (make + model) to most general (global intervals)
+        """
+        make = request.query_params.get('make')
+        model = request.query_params.get('model')
+        
+        if not make:
+            return Response({"error": "Car make is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        intervals = ServiceInterval.objects.filter(
+            (Q(car_make=make) & Q(car_model=model)) |
+            (Q(car_make=make) & Q(car_model__isnull=True)) |
+            (Q(car_make__isnull=True) & Q(car_model__isnull=True)),
+            is_active=True
+        ).order_by(
+            Case(
+                When(car_make=make, car_model=model, then=0),
+                When(car_make=make, car_model__isnull=True, then=1),
+                When(car_make__isnull=True, car_model__isnull=True, then=2),
+                default=3
+            )
+        )
+        
+        serializer = self.get_serializer(intervals, many=True)
+        return Response(serializer.data)
+
+# @swagger_auto_schema(auto_schema=None)
+class ServiceHistoryViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for vehicle service history.
+    
+    Tracks maintenance services performed on vehicles and their relationship
+    to service intervals for prediction purposes.
+    """
+    serializer_class = ServiceHistorySerializer
+    permission_classes = [IsAuthenticated]
+    swagger_schema_fields = {
+        'manual_parameters': [],
+        'operation_id': 'serviceHistory'
+    }
+    
+    def get_serializer_class(self):
+        """
+        Return a simplified serializer for Swagger schema generation
+        to avoid circular references
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            from .swagger_schemas import ServiceHistoryDocsSerializer
+            return ServiceHistoryDocsSerializer
+        return self.serializer_class
+    
+    @swagger_auto_schema(
+        operation_summary="List service history",
+        operation_description="List service history records for the authenticated user's vehicles",
+        tags=['vehicles']
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Create service history",
+        operation_description="Create a new service history record",
+        request_body=ServiceHistorySerializer,
+        tags=['vehicles']
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Retrieve service history",
+        operation_description="Get details of a specific service history record",
+        tags=['vehicles']
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Update service history",
+        operation_description="Update a service history record (admin only)",
+        request_body=ServiceHistorySerializer,
+        tags=['vehicles']
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Partially update service history",
+        operation_description="Partially update a service history record (admin only)",
+        request_body=ServiceHistorySerializer,
+        tags=['vehicles']
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+    
+    @swagger_auto_schema(
+        operation_summary="Delete service history",
+        operation_description="Delete a service history record (admin only)",
+        tags=['vehicles']
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+    
+    def get_queryset(self):
+        """
+        Return empty queryset for swagger schema generation to avoid AnonymousUser errors
+        """
+        if getattr(self, 'swagger_fake_view', False):
+            return ServiceHistory.objects.none()
+        
+        # Regular users can only see their own service history
+        if not self.request.user.is_staff:
+            return ServiceHistory.objects.filter(car__customer__user=self.request.user)
+        
+        # Staff can see all service history
+        return ServiceHistory.objects.all()
+    
+    def perform_create(self, serializer):
+        """Verify appropriate permissions and update service predictions"""
+        car_id = serializer.validated_data.get('car').id
+        car = get_object_or_404(Car, pk=car_id)
+        
+        # Check permissions
+        if not self.request.user.is_staff and car.customer.user != self.request.user:
+            raise permissions.PermissionDenied(_("You don't have permission to add service history for this car."))
+        
+        # Save the service history
+        service_history = serializer.save()
+        
+        # Update car's service predictions
+        car.update_service_predictions()
+        
+        return service_history
