@@ -1,0 +1,36 @@
+name: Documentation Update
+
+on:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  validate-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install markdown-link-check
+        
+    - name: Check Markdown links
+      run: |
+        find . -name "*.md" -type f -exec markdown-link-check {} \;
+        
+    - name: Validate documentation changes
+      run: |
+        echo "Documentation validation complete"
+        echo "Number of documentation files: $(find docs -type f | wc -l)"
+        echo "Total documentation size: $(du -sh docs | cut -f1)" 

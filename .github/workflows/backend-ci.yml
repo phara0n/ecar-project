@@ -1,48 +1,35 @@
-name: ECAR Backend CI/CD
+name: Backend CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
     paths:
       - 'backend/**'
       - '.github/workflows/backend-ci.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
     paths:
       - 'backend/**'
+      - '.github/workflows/backend-ci.yml'
 
 jobs:
   test:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:14
         env:
-          POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: test_ecar_db
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecar_test
         ports:
           - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:7.2-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
     - uses: actions/checkout@v3
     
-    - name: Set up Python
+    - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
         python-version: '3.12'
@@ -56,20 +43,42 @@ jobs:
     - name: Run migrations
       run: |
         cd backend
-        python manage.py migrate
-      env:
-        DJANGO_SETTINGS_MODULE: ecar_backend.settings
-        DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_ecar_db
-        REDIS_URL: redis://localhost:6379/1
+        python manage.py migrate --settings=ecar_backend.settings.test
         
-    - name: Run tests
+    - name: Run Django tests
       run: |
         cd backend
-        python manage.py test
-      env:
-        DJANGO_SETTINGS_MODULE: ecar_backend.settings
-        DATABASE_URL: postgres://postgres:postgres@localhost:5432/test_ecar_db
-        REDIS_URL: redis://localhost:6379/1
+        python manage.py test --settings=ecar_backend.settings.test
+        
+    - name: Check code quality with flake8
+      run: |
+        pip install flake8
+        cd backend
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+  build-docker:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+      
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./backend
+        push: true
+        tags: phara0n/ecar-backend:latest
   
   # Deploy job would be added here for production environment
   # deploy:

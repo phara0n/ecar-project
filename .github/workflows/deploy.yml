@@ -1,0 +1,103 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [verify-build]
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Add SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Deploy to production server
+        run: |
+          ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd /home/ecar/ecar-project
+            git pull origin main
+            docker-compose pull
+            docker-compose down
+            docker-compose up -d
+            docker system prune -af --volumes
+            # Run migrations
+            docker-compose exec -T backend python manage.py migrate
+            # Create superuser if needed (will fail silently if already exists)
+            docker-compose exec -T backend python manage.py create_superuser_if_not_exists
+            # Collect static files
+            docker-compose exec -T backend python manage.py collectstatic --no-input
+          EOF
+          
+  verify-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Run docker-compose config check
+        run: |
+          docker-compose config
+          
+      - name: Check for critical files
+        run: |
+          if [ ! -f "docker-compose.yml" ]; then
+            echo "Error: docker-compose.yml file is missing!"
+            exit 1
+          fi
+          if [ ! -f "backend/Dockerfile" ]; then
+            echo "Error: backend Dockerfile is missing!"
+            exit 1
+          fi
+          if [ ! -f "web-admin/Dockerfile" ]; then
+            echo "Error: web-admin Dockerfile is missing!"
+            exit 1
+          fi
+  
+  backup-database:
+    runs-on: ubuntu-latest
+    needs: [verify-build]
+    environment: production
+    
+    steps:
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Add SSH known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Backup PostgreSQL database
+        run: |
+          ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd /home/ecar/ecar-project
+            # Create backups directory if it doesn't exist
+            mkdir -p /backups
+            # Backup with date in filename
+            BACKUP_FILE="/backups/ecar_backup_$(date +\%Y\%m\%d_\%H\%M).sql"
+            docker-compose exec -T postgres pg_dump -U postgres ecar_db > $BACKUP_FILE
+            # Compress the backup
+            gzip $BACKUP_FILE
+            # Keep only the latest 7 backups
+            ls -t /backups/ecar_backup_*.sql.gz | tail -n +8 | xargs -r rm
+          EOF 
