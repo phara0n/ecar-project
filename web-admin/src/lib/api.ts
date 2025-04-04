@@ -132,8 +132,15 @@ export const customerService = USE_MOCK_API
   : {
     getAll: () => api.get('/customers/'),
     getById: (id: number) => api.get(`/customers/${id}/`),
-    create: (data: any) => api.post('/customers/', data),
-    update: (id: number, data: any) => api.put(`/customers/${id}/`, data),
+    create: (data: any) => {
+      console.log('Creating customer with data:', JSON.stringify(data, null, 2));
+      return api.post('/customers/', data);
+    },
+    update: (id: number, data: any) => {
+      console.log('Updating customer', id, 'with data:', JSON.stringify(data, null, 2));
+      // Try PATCH instead of PUT for updates
+      return api.patch(`/customers/${id}/`, data);
+    },
     delete: (id: number) => api.delete(`/customers/${id}/`)
   };
 
