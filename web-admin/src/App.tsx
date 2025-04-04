@@ -1,65 +1,90 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import MainLayout from './layouts/MainLayout';
-import MinimalLayout from './layouts/MinimalLayout';
-import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
-import NotFound from './pages/NotFound';
-import CustomersPage from './pages/admin/Customers';
-import CreateCustomer from './pages/admin/CreateCustomer';
-import VehiclesPage from './pages/admin/Vehicles';
-import CreateVehicle from './pages/admin/CreateVehicle';
-import ApiTest from './pages/test/ApiTest';
-import { ThemeContextProvider } from './theme/ThemeContext';
-import MinimalThemeProvider from './theme/MinimalThemeProvider';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect, useState, ReactElement } from 'react';
+import { Login } from './pages/Login';
+import { Dashboard } from './pages/Dashboard';
+import { Customers } from './pages/Customers';
+import { DashboardLayout } from './components/layout/DashboardLayout';
+import './App.css';
 
-// Create a route that checks for authentication
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const isAuthenticated = !!localStorage.getItem('token');
-  
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+// Protected route wrapper
+function RequireAuth({ children }: { children: ReactElement }) {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    // Check for authentication status
+    const authStatus = localStorage.getItem('isAuthenticated') === 'true';
+    setIsAuthenticated(authStatus);
+  }, []);
+
+  // Show nothing while checking authentication
+  if (isAuthenticated === null) {
+    return null;
   }
-  
-  return <>{children}</>;
-};
 
-const App = () => {
+  if (!isAuthenticated) {
+    // Redirect to login page with return URL
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return children;
+}
+
+function App() {
   return (
-    <ThemeContextProvider>
-      <MinimalThemeProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          {/* Protected routes with MinimalLayout */}
-          <Route 
-            path="/" 
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        
+        {/* Protected routes */}
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Dashboard />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
+        {/* Customers route - now using actual component */}
+        <Route
+          path="/customers"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Customers />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
+        {/* Placeholder routes for other pages */}
+        {['vehicles', 'services', 'appointments', 'invoices', 'settings'].map((path) => (
+          <Route
+            key={path}
+            path={`/${path}`}
             element={
-              <ProtectedRoute>
-                <MinimalLayout />
-              </ProtectedRoute>
+              <RequireAuth>
+                <DashboardLayout>
+                  <div className="p-6">
+                    <h1 className="text-3xl font-bold capitalize">{path}</h1>
+                    <p className="text-muted-foreground mt-2">
+                      This {path} page is under construction. Check back soon!
+                    </p>
+                  </div>
+                </DashboardLayout>
+              </RequireAuth>
             }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            
-            {/* Admin routes */}
-            <Route path="admin">
-              <Route path="customers" element={<CustomersPage />} />
-              <Route path="customers/create" element={<CreateCustomer />} />
-              <Route path="vehicles" element={<VehiclesPage />} />
-              <Route path="vehicles/create" element={<CreateVehicle />} />
-              {/* Add more admin routes here */}
-            </Route>
-            
-            {/* Other routes */}
-            <Route path="api-test" element={<ApiTest />} />
-          </Route>
-          
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </MinimalThemeProvider>
-    </ThemeContextProvider>
+          />
+        ))}
+        
+        {/* Catch-all route */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Router>
   );
-};
+}
 
 export default App;

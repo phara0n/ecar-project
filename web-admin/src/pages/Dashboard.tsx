@@ -1,163 +1,111 @@
-import { Box, Typography, Grid, Paper, CircularProgress } from '@mui/material';
-import { useEffect, useState } from 'react';
-import { baseApi } from '../store/api/baseApi';
+import { BarChart3, Car, FileText, Users, Wrench } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-// Create a dedicated API endpoint for dashboard stats
-const dashboardApi = baseApi.injectEndpoints({
-  endpoints: (builder) => ({
-    getDashboardStats: builder.query<{
-      customerCount: number;
-      vehicleCount: number;
-      activeServiceCount: number;
-      monthlyRevenue: number;
-    }, void>({
-      query: () => 'dashboard/stats/',
-      // In case the endpoint doesn't exist yet, handle the error gracefully
-      transformErrorResponse: (response) => {
-        console.error('Dashboard stats error:', response);
-        return { status: response.status };
-      },
-    }),
-  }),
-});
+const statCards = [
+  {
+    title: "Total Customers",
+    value: "1,234",
+    description: "Active accounts",
+    icon: Users,
+    change: "+12%",
+  },
+  {
+    title: "Total Vehicles",
+    value: "1,897",
+    description: "Registered in system",
+    icon: Car,
+    change: "+5%",
+  },
+  {
+    title: "Active Services",
+    value: "28",
+    description: "In progress today",
+    icon: Wrench,
+    change: "+2%",
+  },
+  {
+    title: "Revenue (Monthly)",
+    value: "32,450 TND",
+    description: "April 2025",
+    icon: FileText,
+    change: "+18%",
+  },
+];
 
-export const { useGetDashboardStatsQuery } = dashboardApi;
-
-// We'll integrate Toolpad Core components for advanced functionality
-// as we build out the dashboard
-const Dashboard = () => {
-  // Fallback stats in case the API call fails
-  const [stats, setStats] = useState({
-    customerCount: 0,
-    vehicleCount: 0,
-    activeServiceCount: 0,
-    monthlyRevenue: 0,
-  });
-
-  // Use the query hook to fetch dashboard stats
-  const { data, isLoading, error } = useGetDashboardStatsQuery();
-
-  // If we successfully get data from the API, update our stats
-  useEffect(() => {
-    if (data) {
-      setStats(data);
-    }
-  }, [data]);
-
-  // If the API call fails, we can try to fetch individual counts
-  useEffect(() => {
-    if (error) {
-      // This is a fallback solution to manually count items from other endpoints
-      // You would need to implement similar API calls for other resources
-      console.log('Fallback to individual resource counting');
-      // Example: fetch customers count separately
-      fetch('http://localhost:8000/api/customers/')
-        .then(response => response.json())
-        .then(data => {
-          if (data.results && Array.isArray(data.results)) {
-            setStats(prev => ({ ...prev, customerCount: data.results.length }));
-          }
-        })
-        .catch(err => console.error('Error fetching customers:', err));
-    }
-  }, [error]);
-
+export function Dashboard() {
   return (
-    <Box p={3}>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <p className="text-muted-foreground">
+          Overview of your garage management system
+        </p>
+      </div>
       
-      <Grid container spacing={3}>
-        {/* Statistics Cards */}
-        <Grid xs={12} style={{ gridColumn: { sm: 'span 6', lg: 'span 3' } }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
-            <Typography variant="h6" color="text.secondary">
-              Total Customers
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Typography variant="h3" component="div" sx={{ flexGrow: 1, pt: 1 }}>
-                {stats.customerCount}
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {statCards.map((card, index) => (
+          <Card key={index}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">
+                {card.title}
+              </CardTitle>
+              <card.icon className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{card.value}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {card.description}
+              </p>
+              <div className="mt-2 text-sm text-primary">
+                {card.change} from last month
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <Card className="col-span-4">
+          <CardHeader>
+            <CardTitle>Revenue Overview</CardTitle>
+            <CardDescription>
+              Monthly revenue for the current year
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="h-[300px] flex items-center justify-center">
+            <div className="text-muted-foreground">
+              Chart component will be implemented here
+            </div>
+          </CardContent>
+        </Card>
         
-        <Grid xs={12} style={{ gridColumn: { sm: 'span 6', lg: 'span 3' } }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
-            <Typography variant="h6" color="text.secondary">
-              Total Vehicles
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Typography variant="h3" component="div" sx={{ flexGrow: 1, pt: 1 }}>
-                {stats.vehicleCount}
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-        
-        <Grid xs={12} style={{ gridColumn: { sm: 'span 6', lg: 'span 3' } }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
-            <Typography variant="h6" color="text.secondary">
-              Active Services
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Typography variant="h3" component="div" sx={{ flexGrow: 1, pt: 1 }}>
-                {stats.activeServiceCount}
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-        
-        <Grid xs={12} style={{ gridColumn: { sm: 'span 6', lg: 'span 3' } }}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column', height: 140 }}>
-            <Typography variant="h6" color="text.secondary">
-              Revenue (This Month)
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Typography variant="h3" component="div" sx={{ flexGrow: 1, pt: 1 }}>
-                ${stats.monthlyRevenue.toFixed(2)}
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-        
-        {/* Charts and other data will be added here */}
-        <Grid xs={12}>
-          <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Activity
-            </Typography>
-            {isLoading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-                <CircularProgress size={24} />
-              </Box>
-            ) : (
-              <Typography variant="body2" color="text.secondary">
-                No recent activity to display.
-              </Typography>
-            )}
-          </Paper>
-        </Grid>
-      </Grid>
-    </Box>
+        <Card className="col-span-3">
+          <CardHeader>
+            <CardTitle>Recent Services</CardTitle>
+            <CardDescription>
+              Last 5 services performed
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between border-b border-border pb-2 last:border-0 last:pb-0"
+                >
+                  <div>
+                    <div className="font-medium">Oil Change</div>
+                    <div className="text-sm text-muted-foreground">
+                      Vehicle: BMW X5 • Customer: Ahmed Ali
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">Today</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
-};
-
-export default Dashboard; 
+} 
