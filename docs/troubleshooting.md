@@ -616,4 +616,107 @@ When making changes to the ECAR codebase:
 
 ## Contact Support
 
-For persistent issues, please reach out to the development team. 
+For persistent issues, please reach out to the development team.
+
+## Common Dependency Issues
+
+### 1. Missing FullCalendar Packages
+
+If you encounter errors related to FullCalendar packages not being found, such as:
+
+```
+Failed to resolve import "@fullcalendar/interaction" from "src/components/calendar/AppointmentCalendar.tsx"
+```
+
+**Solution**:
+Install the missing package with the `--legacy-peer-deps` flag:
+```bash
+npm install --legacy-peer-deps @fullcalendar/interaction
+```
+
+All FullCalendar packages should be installed:
+- @fullcalendar/core
+- @fullcalendar/daygrid
+- @fullcalendar/timegrid
+- @fullcalendar/list
+- @fullcalendar/react
+- @fullcalendar/interaction
+
+### 2. React 19 Compatibility Issues
+
+Since we're using React 19, some dependencies might have peer dependency conflicts. Always use the `--legacy-peer-deps` flag when installing new packages:
+
+```bash
+npm install --legacy-peer-deps package-name
+```
+
+### 3. Nivo Chart Import Issues
+
+If you encounter errors with Nivo chart imports, verify that all Nivo packages are installed:
+- @nivo/core
+- @nivo/pie
+- @nivo/line
+- @nivo/bar
+- @nivo/geo
+
+### 4. React Pro Sidebar Setup
+
+The React Pro Sidebar requires proper setup with a provider. Ensure the `ProSidebarProvider` is wrapping your app:
+
+```tsx
+import { ProSidebarProvider } from 'react-pro-sidebar';
+
+export const EnhancedLayout = (props: any) => {
+  return (
+    <ProSidebarProvider>
+      {/* Layout content */}
+    </ProSidebarProvider>
+  );
+};
+```
+
+## Vite-specific Issues
+
+### 1. HMR Not Working
+
+If hot module replacement (HMR) is not working properly:
+
+1. Check for console errors
+2. Restart the dev server: `npm run dev`
+3. Clear browser cache and reload
+
+### 2. TypeScript Errors
+
+For TypeScript errors:
+
+1. Run `npm run lint` to identify issues
+2. Fix type definitions where needed
+3. Consider adding necessary type declarations
+
+## Environment Issues
+
+### 1. .env Configuration
+
+Make sure your `.env` file contains the correct API URL:
+
+```
+VITE_API_URL=http://your-api-url
+```
+
+### 2. API Connection
+
+For API connection issues:
+
+1. Verify API endpoints are correct in `dataProvider.ts`
+2. Check CORS configuration
+3. Ensure authentication tokens are being sent correctly
+
+## Running the Application
+
+To start the development server:
+
+```bash
+cd /home/ecar/ecar_project/web-admin && npm run dev
+```
+
+The application will be available at `http://localhost:5173/` or another port if 5173 is already in use. 

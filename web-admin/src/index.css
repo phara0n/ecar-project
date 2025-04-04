@@ -1,107 +1,68 @@
-@import "tailwindcss";
-
-/* Add dark mode theme styles */
 :root {
-  --primary-color: #3498db;
-  --secondary-color: #2c3e50;
-  --success-color: #2ecc71;
-  --danger-color: #e74c3c;
-  --warning-color: #f39c12;
-  --info-color: #3498db;
-  --background-color: #1a1a2e;
-  --card-color: #16213e;
-  --text-color: #e2e2e2;
-  --border-color: #30475e;
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
 }
 
 body {
   margin: 0;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
   min-height: 100vh;
-  background-color: var(--background-color);
-  color: var(--text-color);
 }
 
-/* Override React Admin default styles */
-.RaLayout-root,
-.RaLayout-content,
-.RaLayout-appFrame {
-  background-color: var(--background-color) !important;
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
 }
 
-.RaAppBar-root {
-  background-color: var(--card-color) !important;
-  color: var(--text-color) !important;
-}
-
-.RaMenu-root {
-  background-color: var(--card-color) !important;
-  color: var(--text-color) !important;
-}
-
-.MuiPaper-root {
-  background-color: var(--card-color) !important;
-  color: var(--text-color) !important;
-}
-
-.MuiCard-root {
-  background-color: var(--card-color) !important;
-  color: var(--text-color) !important;
-  border: 1px solid var(--border-color);
-}
-
-.MuiButton-contained {
-  background-color: var(--primary-color) !important;
-}
-
-.MuiButton-containedPrimary {
-  background-color: var(--primary-color) !important;
-}
-
-.MuiButton-containedSecondary {
-  background-color: var(--secondary-color) !important;
-}
-
-.MuiInputBase-root {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-  color: var(--text-color) !important;
-}
-
-.MuiInputLabel-root {
-  color: var(--text-color) !important;
-}
-
-.MuiTableCell-root {
-  border-bottom-color: var(--border-color) !important;
-  color: var(--text-color) !important;
-}
-
-.MuiTableHead-root .MuiTableCell-root {
-  background-color: rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Custom Chip Styles */
-.status-chip {
-  border-radius: 16px;
-  padding: 4px 12px;
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
   font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
 }
 
-.status-pending {
-  background-color: #f39c12 !important;
-  color: #000 !important;
-}
-
-.status-completed {
-  background-color: #2ecc71 !important;
-  color: #000 !important;
-}
-
-.status-cancelled {
-  background-color: #e74c3c !important;
-  color: #fff !important;
-}
-
-.status-scheduled {
-  background-color: #3498db !important;
-  color: #fff !important;
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
 }
