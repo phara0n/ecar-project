@@ -55,20 +55,37 @@ const CreateVehicle = () => {
     return true;
   };
 
-  const handleVehicleSubmit = async (data: VehicleInput) => {
+  const handleVehicleSubmit = async (data: VehicleInput & { saveOption?: 'save' | 'save_add' | 'save_continue' }) => {
     try {
       if (!validateCustomerSelection()) {
         return;
       }
       
       setError(null);
-      await createVehicle(data).unwrap();
+      const saveOption = data.saveOption || 'save';
+      
+      // Remove the saveOption property before sending to API
+      const { saveOption: _, ...vehicleData } = data;
+      
+      const response = await createVehicle(vehicleData).unwrap();
       setSuccess('Vehicle added successfully!');
       
-      // Navigate to vehicles list after a moment
-      setTimeout(() => {
-        navigate('/admin/vehicles');
-      }, 1500);
+      // Handle different save options
+      if (saveOption === 'save') {
+        // Navigate to vehicles list after a moment
+        setTimeout(() => {
+          navigate('/admin/vehicles');
+        }, 1500);
+      } else if (saveOption === 'save_add') {
+        // Reset the form and stay on the page to add another
+        setSuccess('Vehicle added successfully! You can add another one.');
+        // Form doesn't need to be reset as it's being remounted
+      } else if (saveOption === 'save_continue') {
+        // Navigate to the edit page for this vehicle
+        setTimeout(() => {
+          navigate(`/admin/vehicles/${response.id}`);
+        }, 1500);
+      }
     } catch (error) {
       console.error('Failed to create vehicle:', error);
       setError('Failed to create vehicle. Please try again.');
