@@ -96,9 +96,25 @@ export function Customers() {
     setIsCustomerDialogOpen(true);
   };
 
-  const handleDeleteCustomer = (customer: Customer) => {
-    setCustomerToDelete(customer);
-    setIsDeleteDialogOpen(true);
+  const handleDeleteCustomer = async (customer: Customer) => {
+    try {
+      // First check if the customer has any vehicles
+      const response = await vehicleService.getByCustomer(customer.id);
+      const vehicles = response.data;
+      
+      // If vehicles exist, show warning and prevent deletion
+      if (Array.isArray(vehicles) && vehicles.length > 0) {
+        toast.error(`Cannot delete customer with ${vehicles.length} vehicle${vehicles.length > 1 ? 's' : ''}. Please remove all vehicles first.`);
+        return;
+      }
+      
+      // Proceed with deletion dialog if no vehicles
+      setCustomerToDelete(customer);
+      setIsDeleteDialogOpen(true);
+    } catch (err) {
+      console.error("Error checking customer vehicles:", err);
+      toast.error("Failed to check customer vehicles");
+    }
   };
 
   const handleViewVehicles = async (customerId: number) => {
@@ -118,9 +134,11 @@ export function Customers() {
     const toastId = toast.loading("Deleting customer...");
     
     try {
+      // The backend API will handle the cascading delete of the user account
+      // when the customer is deleted (Django will use on_delete=CASCADE)
       await customerService.delete(customerToDelete.id);
       setCustomers(customers.filter(c => c.id !== customerToDelete.id));
-      toast.success("Customer deleted successfully", { id: toastId });
+      toast.success("Customer and associated user account deleted", { id: toastId });
     } catch (err) {
       console.error("Error deleting customer:", err);
       toast.error("Failed to delete customer", { id: toastId });
@@ -327,7 +345,7 @@ export function Customers() {
         onOpenChange={setIsDeleteDialogOpen}
         onConfirm={confirmDelete}
         title="Delete Customer"
-        description={`Are you sure you want to delete ${customerToDelete?.user ? `${customerToDelete.user.first_name} ${customerToDelete.user.last_name}`.trim() : "this customer"}? This action cannot be undone and will also remove all associated vehicle records.`}
+        description={`Are you sure you want to delete ${customerToDelete?.user ? `${customerToDelete.user.first_name} ${customerToDelete.user.last_name}`.trim() : "this customer"}? This action cannot be undone and will permanently remove the customer record and their associated user account (${customerToDelete?.user?.username || 'N/A'}).`}
       />
     </div>
   );

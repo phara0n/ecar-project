@@ -30,14 +30,14 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 - Login page with error handling
 - Protected routes
 - Automatic token refresh mechanism
-- Logout functionality
+- Logout functionality with toast notifications
 
 #### UI Framework
 - Responsive layout system
-- Light/dark mode theme switching
+- Light/dark mode theme switching with toast notifications
 - Mobile sidebar navigation
 - Desktop header and sidebar implementation
-- Toast notification system
+- Toast notification system for user feedback
 
 #### Customer Management
 - Customer listing page with search and filtering
@@ -45,9 +45,14 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 - Customer deletion with confirmation
 - Integration with backend API endpoints
 - Loading states and error handling
+- Username field display for app access management
+- Vehicle viewing functionality with dedicated button
+- Security checks to prevent deletion of customers with attached vehicles
+- Cascading deletion to ensure user accounts are removed with customer records
 
 ### In Progress
 - Vehicles management CRUD operations
+- Viewing of vehicles associated with customers
 
 ### Pending Features
 - Services management
@@ -68,7 +73,8 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 | Customers - Create | `/customers/` | ✅ Implemented |
 | Customers - Update | `/customers/:id/` | ✅ Implemented |
 | Customers - Delete | `/customers/:id/` | ✅ Implemented |
-| Vehicles - List | `/vehicles/` | ⏰ Pending |
+| Vehicles - List | `/vehicles/` | 🔄 In Progress |
+| Vehicles - Customer Vehicles | `/vehicles/?customer_id=:id` | 🔄 In Progress |
 | Vehicles - CRUD | `/vehicles/:id/` | ⏰ Pending |
 | Services - List | `/services/` | ⏰ Pending |
 | Services - CRUD | `/services/:id/` | ⏰ Pending |
@@ -81,13 +87,15 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 - Need to test customer management with actual backend data
 - Need to verify error handling for all API endpoints
 - Mobile responsive design needs additional testing
+- Backend implementation of on_delete=CASCADE for user-customer relationship should be verified
 
 ## Next Development Phase
 1. Complete vehicles management UI and API integration
-2. Implement services management functionality
-3. Build appointments scheduling system with calendar interface
-4. Develop invoice generation and payment tracking
-5. Create comprehensive dashboard with analytics
+2. Implement vehicle listing for specific customers
+3. Implement services management functionality
+4. Build appointments scheduling system with calendar interface
+5. Develop invoice generation and payment tracking
+6. Create comprehensive dashboard with analytics
 
 ## Project Structure
 ```
@@ -114,4 +122,4 @@ ecar_project/
 - Add multi-language support
 
 ## Last Updated
-May 17, 2024
+May 20, 2024
