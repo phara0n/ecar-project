@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Filter, Edit, Trash } from "lucide-react";
-import { customerService } from "@/lib/api";
+import { Search, Plus, Filter, Edit, Trash, Car } from "lucide-react";
+import { customerService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
 import { CustomerDialog, CustomerFormData } from "@/components/CustomerDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
@@ -14,6 +14,7 @@ interface Customer {
   email: string;
   phone: string;
   address?: string;
+  username?: string;
   vehicles?: number;
   last_visit?: string;
   status?: string;
@@ -81,6 +82,8 @@ export function Customers() {
       email: customer.email,
       phone: customer.phone,
       address: customer.address,
+      username: customer.username,
+      // Note: We don't pass password - it would be hashed on the backend
     });
     setIsCustomerDialogOpen(true);
   };
@@ -88,6 +91,17 @@ export function Customers() {
   const handleDeleteCustomer = (customer: Customer) => {
     setCustomerToDelete(customer);
     setIsDeleteDialogOpen(true);
+  };
+
+  const handleViewVehicles = async (customerId: number) => {
+    try {
+      // Navigate to vehicles page or show vehicles in a dialog
+      toast.info(`Viewing vehicles for customer #${customerId}`);
+      // Future implementation will show vehicles for this customer
+    } catch (err) {
+      console.error("Error fetching vehicles:", err);
+      toast.error("Failed to load vehicles");
+    }
   };
 
   const confirmDelete = async () => {
@@ -125,8 +139,12 @@ export function Customers() {
         const phoneMatch = customer.phone && typeof customer.phone === 'string'
           ? customer.phone.includes(searchTerm)
           : false;
+
+        const usernameMatch = customer.username && typeof customer.username === 'string'
+          ? customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+          : false;
           
-        return nameMatch || emailMatch || phoneMatch;
+        return nameMatch || emailMatch || phoneMatch || usernameMatch;
       })
     : [];
 
@@ -205,6 +223,7 @@ export function Customers() {
                     <tr className="border-b bg-muted/50">
                       <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
                       <th className="px-4 py-3 text-left text-sm font-medium">Contact</th>
+                      <th className="px-4 py-3 text-center text-sm font-medium">App Access</th>
                       <th className="px-4 py-3 text-center text-sm font-medium">Vehicles</th>
                       <th className="px-4 py-3 text-left text-sm font-medium">Last Visit</th>
                       <th className="px-4 py-3 text-center text-sm font-medium">Status</th>
@@ -222,7 +241,24 @@ export function Customers() {
                           <div className="text-muted-foreground">{customer.phone || "N/A"}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
-                          {customer.vehicles || 0}
+                          {customer.username ? (
+                            <span className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700">
+                              {customer.username}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No access</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 gap-1"
+                            onClick={() => handleViewVehicles(customer.id)}
+                          >
+                            <Car className="h-3.5 w-3.5" />
+                            <span>{customer.vehicles || 0}</span>
+                          </Button>
                         </td>
                         <td className="px-4 py-3 text-sm">
                           {customer.last_visit ? new Date(customer.last_visit).toLocaleDateString() : 'N/A'}

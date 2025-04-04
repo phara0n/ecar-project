@@ -2,8 +2,8 @@ import axios from 'axios';
 import { mockCustomerService, mockVehicleService } from './mockApi';
 
 // Configuration flag to use mock API or real API
-// Set to true to use mock API for testing, false to use real backend
-const USE_MOCK_API = true;
+// Set to false to use real backend API
+const USE_MOCK_API = false;
 
 // Create axios instance with default config
 const api = axios.create({

@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { customerService } from "@/lib/api";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Info, User, Key } from "lucide-react";
 
 export interface CustomerFormData {
   id?: number;
@@ -12,6 +14,8 @@ export interface CustomerFormData {
   email: string;
   phone: string;
   address?: string;
+  username?: string;
+  password?: string;
 }
 
 interface CustomerDialogProps {
@@ -28,13 +32,17 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
     email: "",
     phone: "",
     address: "",
+    username: "",
+    password: "", 
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("basic");
 
   useEffect(() => {
     // Reset errors when dialog opens/closes
     setFormErrors({});
+    setActiveTab("basic");
     
     if (customer) {
       setFormData({
@@ -43,6 +51,9 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
         email: customer.email || "",
         phone: customer.phone || "",
         address: customer.address || "",
+        username: customer.username || "",
+        // We don't show existing password - it would be hashed in the backend
+        password: "",
       });
     } else {
       // Reset form when adding a new customer
@@ -51,6 +62,8 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
         email: "",
         phone: "",
         address: "",
+        username: "",
+        password: "",
       });
     }
   }, [customer, isOpen]);
@@ -74,6 +87,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
     
+    // Basic info validation
     if (!formData.name.trim()) {
       errors.name = "Name is required";
     }
@@ -90,7 +104,35 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
       errors.phone = "Please enter a valid phone number";
     }
     
+    // Credentials validation for new users
+    if (!isEditing) {
+      if (!formData.username?.trim()) {
+        errors.username = "Username is required for mobile app access";
+      } else if (formData.username.length < 4) {
+        errors.username = "Username must be at least 4 characters";
+      }
+      
+      if (!formData.password?.trim()) {
+        errors.password = "Password is required for mobile app access";
+      } else if (formData.password.length < 8) {
+        errors.password = "Password must be at least 8 characters";
+      }
+    } else if (formData.password && formData.password.length > 0 && formData.password.length < 8) {
+      // Password is optional when editing, but if provided should be valid
+      errors.password = "Password must be at least 8 characters";
+    }
+    
     setFormErrors(errors);
+    
+    // If there are errors, switch to the tab containing the first error
+    if (Object.keys(errors).length > 0) {
+      if (errors.name || errors.email || errors.phone || errors.address) {
+        setActiveTab("basic");
+      } else if (errors.username || errors.password) {
+        setActiveTab("credentials");
+      }
+    }
+    
     return Object.keys(errors).length === 0;
   };
 
@@ -107,15 +149,22 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
       isEditing ? "Updating customer..." : "Creating customer..."
     );
 
+    // If password is empty and we're editing, remove it from the request
+    // This prevents changing the existing password
+    const dataToSend = { ...formData };
+    if (isEditing && (!dataToSend.password || dataToSend.password.length === 0)) {
+      delete dataToSend.password;
+    }
+
     try {
-      console.log(`${isEditing ? 'Updating' : 'Creating'} customer with data:`, formData);
+      console.log(`${isEditing ? 'Updating' : 'Creating'} customer with data:`, dataToSend);
       
       if (isEditing && customer?.id) {
-        const response = await customerService.update(customer.id, formData);
+        const response = await customerService.update(customer.id, dataToSend);
         console.log('Update response:', response.data);
         toast.success("Customer updated successfully", { id: toastId });
       } else {
-        const response = await customerService.create(formData);
+        const response = await customerService.create(dataToSend);
         console.log('Create response:', response.data);
         toast.success("Customer created successfully", { id: toastId });
       }
@@ -137,6 +186,13 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
           
           Object.entries(apiErrors).forEach(([field, messages]: [string, any]) => {
             formattedErrors[field] = Array.isArray(messages) ? messages[0] : messages.toString();
+            
+            // Ensure we switch to the appropriate tab for the error
+            if (field === 'name' || field === 'email' || field === 'phone' || field === 'address') {
+              setActiveTab("basic");
+            } else if (field === 'username' || field === 'password') {
+              setActiveTab("credentials");
+            }
           });
           
           setFormErrors(formattedErrors);
@@ -174,7 +230,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEditing ? "Edit Customer" : "Add New Customer"}</DialogTitle>
@@ -184,65 +240,133 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
                 : "Add a new customer to the system."}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                className={formErrors.name ? "border-destructive" : ""}
-              />
-              {formErrors.name && (
-                <p className="text-destructive text-sm">{formErrors.name}</p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                className={formErrors.email ? "border-destructive" : ""}
-              />
-              {formErrors.email && (
-                <p className="text-destructive text-sm">{formErrors.email}</p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input
-                id="phone"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                required
-                className={formErrors.phone ? "border-destructive" : ""}
-              />
-              {formErrors.phone && (
-                <p className="text-destructive text-sm">{formErrors.phone}</p>
-              )}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="address">Address</Label>
-              <Input
-                id="address"
-                name="address"
-                value={formData.address || ""}
-                onChange={handleChange}
-                className={formErrors.address ? "border-destructive" : ""}
-              />
-              {formErrors.address && (
-                <p className="text-destructive text-sm">{formErrors.address}</p>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
+          
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="basic" className="flex items-center gap-2">
+                <Info className="h-4 w-4" />
+                <span>Basic Info</span>
+              </TabsTrigger>
+              <TabsTrigger value="credentials" className="flex items-center gap-2">
+                <User className="h-4 w-4" />
+                <span>App Credentials</span>
+              </TabsTrigger>
+            </TabsList>
+            
+            {/* Basic Info Tab */}
+            <TabsContent value="basic" className="p-0 pt-4">
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                    className={formErrors.name ? "border-destructive" : ""}
+                  />
+                  {formErrors.name && (
+                    <p className="text-destructive text-sm">{formErrors.name}</p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className={formErrors.email ? "border-destructive" : ""}
+                  />
+                  {formErrors.email && (
+                    <p className="text-destructive text-sm">{formErrors.email}</p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    required
+                    className={formErrors.phone ? "border-destructive" : ""}
+                  />
+                  {formErrors.phone && (
+                    <p className="text-destructive text-sm">{formErrors.phone}</p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="address">Address</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={formData.address || ""}
+                    onChange={handleChange}
+                    className={formErrors.address ? "border-destructive" : ""}
+                  />
+                  {formErrors.address && (
+                    <p className="text-destructive text-sm">{formErrors.address}</p>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+            
+            {/* App Credentials Tab */}
+            <TabsContent value="credentials" className="p-0 pt-4">
+              <div className="grid gap-4">
+                <div className="text-sm text-muted-foreground mb-2">
+                  <p>These credentials will allow the customer to access the mobile app.</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    name="username"
+                    value={formData.username || ""}
+                    onChange={handleChange}
+                    required={!isEditing}
+                    className={formErrors.username ? "border-destructive" : ""}
+                  />
+                  {formErrors.username && (
+                    <p className="text-destructive text-sm">{formErrors.username}</p>
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">
+                    {isEditing ? "New Password (leave blank to keep current)" : "Password"}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      name="password"
+                      type="password"
+                      value={formData.password || ""}
+                      onChange={handleChange}
+                      required={!isEditing}
+                      className={formErrors.password ? "border-destructive" : ""}
+                    />
+                    <div className="absolute right-2 top-2.5 text-muted-foreground">
+                      <Key className="h-4 w-4" />
+                    </div>
+                  </div>
+                  {formErrors.password && (
+                    <p className="text-destructive text-sm">{formErrors.password}</p>
+                  )}
+                  {isEditing && (
+                    <p className="text-sm text-muted-foreground">
+                      Leave password blank to keep the current password.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <DialogFooter className="mt-6">
             <Button variant="outline" type="button" onClick={onClose}>
               Cancel
             </Button>
