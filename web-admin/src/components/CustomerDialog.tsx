@@ -44,6 +44,8 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
   useEffect(() => {
     // Reset errors when dialog opens/closes
     setFormErrors({});
+    
+    // Always start with basic tab, especially when editing
     setActiveTab("basic");
     
     if (customer) {
@@ -55,7 +57,7 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
         phone: customer.phone || "",
         address: customer.address || "",
         username: customer.username || "",
-        // We don't show existing password - it would be hashed in the backend
+        // We don't show/use password when editing
         password: "",
       });
     } else {
@@ -108,7 +110,7 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
       errors.phone = "Please enter a valid phone number";
     }
     
-    // Credentials validation for new users
+    // Credentials validation ONLY for new users
     if (!isEditing) {
       if (!formData.username?.trim()) {
         errors.username = "Username is required for mobile app access";
@@ -121,9 +123,6 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
       } else if (formData.password.length < 8) {
         errors.password = "Password must be at least 8 characters";
       }
-    } else if (formData.password && formData.password.length > 0 && formData.password.length < 8) {
-      // Password is optional when editing, but if provided should be valid
-      errors.password = "Password must be at least 8 characters";
     }
     
     setFormErrors(errors);
@@ -132,7 +131,7 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
     if (Object.keys(errors).length > 0) {
       if (errors.first_name || errors.last_name || errors.email || errors.phone || errors.address) {
         setActiveTab("basic");
-      } else if (errors.username || errors.password) {
+      } else if (!isEditing && (errors.username || errors.password)) {
         setActiveTab("credentials");
       }
     }
@@ -153,20 +152,37 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
       isEditing ? "Updating customer..." : "Creating customer..."
     );
 
-    const dataToSend = {
-      phone: formData.phone,
-      address: formData.address || '',
-      user: {
-        email: formData.email,
-        username: formData.username || '',
-        first_name: formData.first_name,
-        last_name: formData.last_name
+    // Format data differently for create vs update
+    let dataToSend;
+    
+    if (isEditing) {
+      // When editing, only send basic info, not credentials
+      dataToSend = {
+        phone: formData.phone,
+        address: formData.address || '',
+        user: {
+          first_name: formData.first_name,
+          last_name: formData.last_name || ''
+        }
+      };
+      
+      // Only include email if it's changed
+      if (formData.email !== customer?.email) {
+        dataToSend.user.email = formData.email;
       }
-    };
-
-    // Only include password when it's provided (for new customers or password changes)
-    if (formData.password && formData.password.trim().length > 0) {
-      dataToSend.user.password = formData.password;
+    } else {
+      // When creating, send all info including credentials
+      dataToSend = {
+        phone: formData.phone,
+        address: formData.address || '',
+        user: {
+          email: formData.email,
+          username: formData.username || '',
+          first_name: formData.first_name,
+          last_name: formData.last_name || '',
+          password: formData.password
+        }
+      };
     }
 
     try {
@@ -212,17 +228,27 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
                   else if (userField === 'last_name') formattedErrors['last_name'] = msg;
                 });
               } else {
-                formattedErrors['user'] = Array.isArray(messages) ? messages[0] : messages.toString();
+                // Handle case where user field itself has an error message
+                formattedErrors['user'] = typeof messages === 'string' 
+                  ? messages 
+                  : Array.isArray(messages) 
+                    ? messages[0] 
+                    : 'Invalid user data';
               }
             } else {
-              formattedErrors[field] = Array.isArray(messages) ? messages[0] : messages.toString();
+              // For non-user field errors
+              formattedErrors[field] = typeof messages === 'string'
+                ? messages
+                : Array.isArray(messages) 
+                  ? messages[0] 
+                  : messages.toString();
             }
             
             // Ensure we switch to the appropriate tab for the error
             if (field === 'first_name' || field === 'last_name' || field === 'email' || field === 'phone' || field === 'address' || 
                 field === 'user') {
               setActiveTab("basic");
-            } else if (field === 'username' || field === 'password') {
+            } else if (!isEditing && (field === 'username' || field === 'password')) {
               setActiveTab("credentials");
             }
           });
@@ -241,12 +267,26 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
         // Format Django REST framework error messages
         const errors = error.response.data;
         if (typeof errors === 'object') {
+          // Create a friendly error message from the error object
           errorMessage = Object.entries(errors)
             .map(([field, messages]: [string, any]) => {
+              // Handle the user object specifically
+              if (field === 'user') {
+                if (typeof messages === 'object') {
+                  // If user contains nested error fields, format them individually
+                  return Object.entries(messages)
+                    .map(([userField, userMsg]) => `${userField}: ${Array.isArray(userMsg) ? userMsg[0] : userMsg}`)
+                    .join(', ');
+                } else {
+                  // If user has a string error
+                  return `user: ${typeof messages === 'string' ? messages : JSON.stringify(messages)}`;
+                }
+              }
+              // Handle regular fields
               if (Array.isArray(messages)) {
                 return `${field}: ${messages.join(', ')}`;
               }
-              return `${field}: ${messages}`;
+              return `${field}: ${typeof messages === 'string' ? messages : JSON.stringify(messages)}`;
             })
             .join(', ');
         } else if (typeof errors === 'string') {
@@ -274,15 +314,17 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
           </DialogHeader>
           
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className={`grid w-full ${isEditing ? 'grid-cols-1' : 'grid-cols-2'}`}>
               <TabsTrigger value="basic" className="flex items-center gap-2">
                 <Info className="h-4 w-4" />
                 <span>Basic Info</span>
               </TabsTrigger>
-              <TabsTrigger value="credentials" className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                <span>App Credentials</span>
-              </TabsTrigger>
+              {!isEditing && (
+                <TabsTrigger value="credentials" className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span>App Credentials</span>
+                </TabsTrigger>
+              )}
             </TabsList>
             
             {/* Basic Info Tab */}
@@ -362,55 +404,50 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
               </div>
             </TabsContent>
             
-            {/* App Credentials Tab */}
-            <TabsContent value="credentials" className="p-0 pt-4">
-              <div className="grid gap-4">
-                <div className="text-sm text-muted-foreground mb-2">
-                  <p>These credentials will allow the customer to access the mobile app.</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input
-                    id="username"
-                    name="username"
-                    value={formData.username || ""}
-                    onChange={handleChange}
-                    required={!isEditing}
-                    className={formErrors.username ? "border-destructive" : ""}
-                  />
-                  {formErrors.username && (
-                    <p className="text-destructive text-sm">{formErrors.username}</p>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">
-                    {isEditing ? "New Password (leave blank to keep current)" : "Password"}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      name="password"
-                      type="password"
-                      value={formData.password || ""}
-                      onChange={handleChange}
-                      required={!isEditing}
-                      className={formErrors.password ? "border-destructive" : ""}
-                    />
-                    <div className="absolute right-2 top-2.5 text-muted-foreground">
-                      <Key className="h-4 w-4" />
-                    </div>
+            {/* App Credentials Tab - Only show when creating a new customer */}
+            {!isEditing && (
+              <TabsContent value="credentials" className="p-0 pt-4">
+                <div className="grid gap-4">
+                  <div className="text-sm text-muted-foreground mb-2">
+                    <p>These credentials will allow the customer to access the mobile app.</p>
                   </div>
-                  {formErrors.password && (
-                    <p className="text-destructive text-sm">{formErrors.password}</p>
-                  )}
-                  {isEditing && (
-                    <p className="text-sm text-muted-foreground">
-                      Leave password blank to keep the current password.
-                    </p>
-                  )}
+                  <div className="grid gap-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      name="username"
+                      value={formData.username || ""}
+                      onChange={handleChange}
+                      required
+                      className={formErrors.username ? "border-destructive" : ""}
+                    />
+                    {formErrors.username && (
+                      <p className="text-destructive text-sm">{formErrors.username}</p>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        name="password"
+                        type="password"
+                        value={formData.password || ""}
+                        onChange={handleChange}
+                        required
+                        className={formErrors.password ? "border-destructive" : ""}
+                      />
+                      <div className="absolute right-2 top-2.5 text-muted-foreground">
+                        <Key className="h-4 w-4" />
+                      </div>
+                    </div>
+                    {formErrors.password && (
+                      <p className="text-destructive text-sm">{formErrors.password}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </TabsContent>
+              </TabsContent>
+            )}
           </Tabs>
           
           <DialogFooter className="mt-6">
