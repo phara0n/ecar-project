@@ -8,13 +8,20 @@ import { toast } from "sonner";
 import { CustomerDialog, CustomerFormData } from "@/components/CustomerDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
 
+// Updated interface to match backend API response structure
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+}
+
 interface Customer {
   id: number;
-  name: string;
-  email: string;
+  user: User;
   phone: string;
   address?: string;
-  username?: string;
   vehicles?: number;
   last_visit?: string;
   status?: string;
@@ -78,11 +85,11 @@ export function Customers() {
   const handleEditCustomer = (customer: Customer) => {
     setSelectedCustomer({
       id: customer.id,
-      name: customer.name,
-      email: customer.email,
+      name: `${customer.user.first_name} ${customer.user.last_name}`.trim(),
+      email: customer.user.email,
       phone: customer.phone,
       address: customer.address,
-      username: customer.username,
+      username: customer.user.username,
       // Note: We don't pass password - it would be hashed on the backend
     });
     setIsCustomerDialogOpen(true);
@@ -128,20 +135,22 @@ export function Customers() {
         // Make sure we have valid customer objects with required properties
         if (!customer) return false;
         
-        const nameMatch = customer.name && typeof customer.name === 'string' 
-          ? customer.name.toLowerCase().includes(searchTerm.toLowerCase())
+        // Get full name from first_name and last_name
+        const fullName = customer.user && `${customer.user.first_name} ${customer.user.last_name}`.trim();
+        const nameMatch = fullName 
+          ? fullName.toLowerCase().includes(searchTerm.toLowerCase())
           : false;
           
-        const emailMatch = customer.email && typeof customer.email === 'string'
-          ? customer.email.toLowerCase().includes(searchTerm.toLowerCase())
+        const emailMatch = customer.user?.email && typeof customer.user.email === 'string'
+          ? customer.user.email.toLowerCase().includes(searchTerm.toLowerCase())
           : false;
           
         const phoneMatch = customer.phone && typeof customer.phone === 'string'
           ? customer.phone.includes(searchTerm)
           : false;
 
-        const usernameMatch = customer.username && typeof customer.username === 'string'
-          ? customer.username.toLowerCase().includes(searchTerm.toLowerCase())
+        const usernameMatch = customer.user?.username && typeof customer.user.username === 'string'
+          ? customer.user.username.toLowerCase().includes(searchTerm.toLowerCase())
           : false;
           
         return nameMatch || emailMatch || phoneMatch || usernameMatch;
@@ -234,16 +243,16 @@ export function Customers() {
                     {filteredCustomers.map((customer) => (
                       <tr key={customer.id} className="border-b hover:bg-muted/50">
                         <td className="px-4 py-3 text-sm font-medium">
-                          {customer.name || "N/A"}
+                          {customer.user && `${customer.user.first_name} ${customer.user.last_name}`.trim() || "N/A"}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          <div>{customer.email || "N/A"}</div>
+                          <div>{customer.user?.email || "N/A"}</div>
                           <div className="text-muted-foreground">{customer.phone || "N/A"}</div>
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
-                          {customer.username ? (
+                          {customer.user?.username ? (
                             <span className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700">
-                              {customer.username}
+                              {customer.user.username}
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground">No access</span>
@@ -305,19 +314,19 @@ export function Customers() {
 
       {/* Customer Dialog */}
       <CustomerDialog
-        isOpen={isCustomerDialogOpen}
-        onClose={() => setIsCustomerDialogOpen(false)}
+        open={isCustomerDialogOpen}
+        onOpenChange={setIsCustomerDialogOpen}
         customer={selectedCustomer}
         onSuccess={fetchCustomers}
       />
 
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
-        isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
         onConfirm={confirmDelete}
         title="Delete Customer"
-        description={`Are you sure you want to delete ${customerToDelete?.name || "this customer"}? This action cannot be undone and will also remove all associated vehicle records.`}
+        description={`Are you sure you want to delete ${customerToDelete?.user ? `${customerToDelete.user.first_name} ${customerToDelete.user.last_name}`.trim() : "this customer"}? This action cannot be undone and will also remove all associated vehicle records.`}
       />
     </div>
   );

@@ -19,13 +19,13 @@ export interface CustomerFormData {
 }
 
 interface CustomerDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   customer?: CustomerFormData;
   onSuccess: () => void;
 }
 
-export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: CustomerDialogProps) {
+export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: CustomerDialogProps) {
   const isEditing = !!customer?.id;
   const [formData, setFormData] = useState<CustomerFormData>({
     name: "",
@@ -66,7 +66,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
         password: "",
       });
     }
-  }, [customer, isOpen]);
+  }, [customer, open]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -149,11 +149,27 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
       isEditing ? "Updating customer..." : "Creating customer..."
     );
 
-    // If password is empty and we're editing, remove it from the request
-    // This prevents changing the existing password
-    const dataToSend = { ...formData };
-    if (isEditing && (!dataToSend.password || dataToSend.password.length === 0)) {
-      delete dataToSend.password;
+    // Split the form data into user and customer fields
+    // The API expects user data in a nested object
+    // Extract first name and last name from the full name
+    const nameParts = formData.name.trim().split(' ');
+    const first_name = nameParts[0] || '';
+    const last_name = nameParts.slice(1).join(' ') || '';
+
+    const dataToSend = {
+      phone: formData.phone,
+      address: formData.address || '',
+      user: {
+        email: formData.email,
+        username: formData.username || '',
+        first_name,
+        last_name
+      }
+    };
+
+    // Only include password when it's provided (for new customers or password changes)
+    if (formData.password && formData.password.trim().length > 0) {
+      dataToSend.user.password = formData.password;
     }
 
     try {
@@ -169,7 +185,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
         toast.success("Customer created successfully", { id: toastId });
       }
       onSuccess();
-      onClose();
+      onOpenChange(false);
     } catch (error: any) {
       console.error("Error saving customer:", error);
       
@@ -185,10 +201,30 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
           const formattedErrors: Record<string, string> = {};
           
           Object.entries(apiErrors).forEach(([field, messages]: [string, any]) => {
-            formattedErrors[field] = Array.isArray(messages) ? messages[0] : messages.toString();
+            // Handle nested user field errors
+            if (field === 'user') {
+              if (typeof messages === 'object') {
+                Object.entries(messages).forEach(([userField, userMessages]: [string, any]) => {
+                  const msg = Array.isArray(userMessages) ? userMessages[0] : userMessages.toString();
+                  
+                  // Map user fields to form fields
+                  if (userField === 'email') formattedErrors['email'] = msg;
+                  else if (userField === 'username') formattedErrors['username'] = msg;
+                  else if (userField === 'password') formattedErrors['password'] = msg;
+                  else if (userField === 'first_name' || userField === 'last_name') {
+                    formattedErrors['name'] = msg;
+                  }
+                });
+              } else {
+                formattedErrors['user'] = Array.isArray(messages) ? messages[0] : messages.toString();
+              }
+            } else {
+              formattedErrors[field] = Array.isArray(messages) ? messages[0] : messages.toString();
+            }
             
             // Ensure we switch to the appropriate tab for the error
-            if (field === 'name' || field === 'email' || field === 'phone' || field === 'address') {
+            if (field === 'name' || field === 'email' || field === 'phone' || field === 'address' || 
+                field === 'user') {
               setActiveTab("basic");
             } else if (field === 'username' || field === 'password') {
               setActiveTab("credentials");
@@ -229,7 +265,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
@@ -367,7 +403,7 @@ export function CustomerDialog({ isOpen, onClose, customer, onSuccess }: Custome
           </Tabs>
           
           <DialogFooter className="mt-6">
-            <Button variant="outline" type="button" onClick={onClose}>
+            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
