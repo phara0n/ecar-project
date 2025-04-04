@@ -5,6 +5,8 @@ import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import CustomersPage from './pages/admin/Customers';
 import CreateCustomer from './pages/admin/CreateCustomer';
+import VehiclesPage from './pages/admin/Vehicles';
+import CreateVehicle from './pages/admin/CreateVehicle';
 import ApiTest from './pages/test/ApiTest';
 import ThemeCustomization from './themes';
 
@@ -41,6 +43,8 @@ const App = () => {
           <Route path="admin">
             <Route path="customers" element={<CustomersPage />} />
             <Route path="customers/create" element={<CreateCustomer />} />
+            <Route path="vehicles" element={<VehiclesPage />} />
+            <Route path="vehicles/create" element={<CreateVehicle />} />
             {/* Add more admin routes here */}
           </Route>
           
