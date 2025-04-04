@@ -14,9 +14,9 @@ interface Customer {
   email: string;
   phone: string;
   address?: string;
-  vehicles: number;
+  vehicles?: number;
   last_visit?: string;
-  status: string;
+  status?: string;
 }
 
 export function Customers() {
@@ -41,11 +41,29 @@ export function Customers() {
     
     try {
       const response = await customerService.getAll();
-      setCustomers(response.data);
+      console.log("API Response:", response.data);
+      
+      // Handle Django REST Framework pagination format
+      let customersData: Customer[] = [];
+      
+      if (Array.isArray(response.data)) {
+        // Direct array response
+        customersData = response.data;
+      } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
+        // DRF paginated response
+        customersData = response.data.results;
+      } else if (response.data && response.data.customers && Array.isArray(response.data.customers)) {
+        // Custom format with customers field
+        customersData = response.data.customers;
+      }
+      
+      setCustomers(customersData);
     } catch (err: any) {
       console.error("Error fetching customers:", err);
       setError("Failed to load customers. Please try again.");
       toast.error("Failed to load customers");
+      // Set empty array on error to avoid filter errors
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
@@ -90,11 +108,27 @@ export function Customers() {
     }
   };
 
-  const filteredCustomers = customers.filter((customer) =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    customer.phone.includes(searchTerm)
-  );
+  // Safe filtering function that checks if properties exist before accessing them
+  const filteredCustomers = Array.isArray(customers) 
+    ? customers.filter((customer) => {
+        // Make sure we have valid customer objects with required properties
+        if (!customer) return false;
+        
+        const nameMatch = customer.name && typeof customer.name === 'string' 
+          ? customer.name.toLowerCase().includes(searchTerm.toLowerCase())
+          : false;
+          
+        const emailMatch = customer.email && typeof customer.email === 'string'
+          ? customer.email.toLowerCase().includes(searchTerm.toLowerCase())
+          : false;
+          
+        const phoneMatch = customer.phone && typeof customer.phone === 'string'
+          ? customer.phone.includes(searchTerm)
+          : false;
+          
+        return nameMatch || emailMatch || phoneMatch;
+      })
+    : [];
 
   return (
     <div className="space-y-6">
@@ -155,6 +189,14 @@ export function Customers() {
                 Try Again
               </Button>
             </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchTerm ? (
+                <p>No customers match your search. Try different criteria.</p>
+              ) : (
+                <p>No customers found. Add your first customer to get started.</p>
+              )}
+            </div>
           ) : (
             <div className="rounded-md border">
               <div className="overflow-x-auto">
@@ -170,61 +212,53 @@ export function Customers() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredCustomers.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                          No customers found. Try another search term.
+                    {filteredCustomers.map((customer) => (
+                      <tr key={customer.id} className="border-b hover:bg-muted/50">
+                        <td className="px-4 py-3 text-sm font-medium">
+                          {customer.name || "N/A"}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          <div>{customer.email || "N/A"}</div>
+                          <div className="text-muted-foreground">{customer.phone || "N/A"}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          {customer.vehicles || 0}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {customer.last_visit ? new Date(customer.last_visit).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              customer.status === "active"
+                                ? "bg-primary/10 text-primary"
+                                : "bg-muted-foreground/20 text-muted-foreground"
+                            }`}
+                          >
+                            {customer.status || "inactive"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          <div className="flex justify-end gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              onClick={() => handleEditCustomer(customer)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteCustomer(customer)}
+                            >
+                              <Trash className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
-                    ) : (
-                      filteredCustomers.map((customer) => (
-                        <tr key={customer.id} className="border-b hover:bg-muted/50">
-                          <td className="px-4 py-3 text-sm font-medium">
-                            {customer.name}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            <div>{customer.email}</div>
-                            <div className="text-muted-foreground">{customer.phone}</div>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            {customer.vehicles || 0}
-                          </td>
-                          <td className="px-4 py-3 text-sm">
-                            {customer.last_visit ? new Date(customer.last_visit).toLocaleDateString() : 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-center">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                customer.status === "active"
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-muted-foreground/20 text-muted-foreground"
-                              }`}
-                            >
-                              {customer.status}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => handleEditCustomer(customer)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="icon"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => handleDeleteCustomer(customer)}
-                              >
-                                <Trash className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -247,7 +281,7 @@ export function Customers() {
         onClose={() => setIsDeleteDialogOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Customer"
-        description={`Are you sure you want to delete ${customerToDelete?.name}? This action cannot be undone and will also remove all associated vehicle records.`}
+        description={`Are you sure you want to delete ${customerToDelete?.name || "this customer"}? This action cannot be undone and will also remove all associated vehicle records.`}
       />
     </div>
   );
