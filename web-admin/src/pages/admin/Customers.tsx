@@ -21,6 +21,7 @@ import {
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Search as SearchIcon } from '@mui/icons-material';
 import { baseApi } from '../../store/api/baseApi';
+import { Link as RouterLink } from 'react-router-dom';
 
 // Define the customer interface
 interface Customer {
@@ -114,7 +115,8 @@ const CustomersPage = () => {
             variant="contained" 
             color="primary" 
             startIcon={<AddIcon />}
-            href="/admin/customers/new"
+            component={RouterLink}
+            to="/admin/customers/create"
           >
             Add Customer
           </Button>

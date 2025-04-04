@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
 import CustomersPage from './pages/admin/Customers';
+import CreateCustomer from './pages/admin/CreateCustomer';
 import ApiTest from './pages/test/ApiTest';
 import ThemeCustomization from './themes';
 
@@ -39,6 +40,7 @@ const App = () => {
           {/* Admin routes */}
           <Route path="admin">
             <Route path="customers" element={<CustomersPage />} />
+            <Route path="customers/create" element={<CreateCustomer />} />
             {/* Add more admin routes here */}
           </Route>
           
