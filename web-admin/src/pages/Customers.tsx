@@ -85,7 +85,8 @@ export function Customers() {
   const handleEditCustomer = (customer: Customer) => {
     setSelectedCustomer({
       id: customer.id,
-      name: `${customer.user.first_name} ${customer.user.last_name}`.trim(),
+      first_name: customer.user.first_name,
+      last_name: customer.user.last_name,
       email: customer.user.email,
       phone: customer.phone,
       address: customer.address,

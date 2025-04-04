@@ -10,7 +10,8 @@ import { Info, User, Key } from "lucide-react";
 
 export interface CustomerFormData {
   id?: number;
-  name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone: string;
   address?: string;
@@ -28,7 +29,8 @@ interface CustomerDialogProps {
 export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: CustomerDialogProps) {
   const isEditing = !!customer?.id;
   const [formData, setFormData] = useState<CustomerFormData>({
-    name: "",
+    first_name: "",
+    last_name: "",
     email: "",
     phone: "",
     address: "",
@@ -47,7 +49,8 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
     if (customer) {
       setFormData({
         id: customer.id,
-        name: customer.name || "",
+        first_name: customer.first_name || "",
+        last_name: customer.last_name || "",
         email: customer.email || "",
         phone: customer.phone || "",
         address: customer.address || "",
@@ -58,7 +61,8 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
     } else {
       // Reset form when adding a new customer
       setFormData({
-        name: "",
+        first_name: "",
+        last_name: "",
         email: "",
         phone: "",
         address: "",
@@ -88,8 +92,8 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
     const errors: Record<string, string> = {};
     
     // Basic info validation
-    if (!formData.name.trim()) {
-      errors.name = "Name is required";
+    if (!formData.first_name.trim()) {
+      errors.first_name = "First name is required";
     }
     
     if (!formData.email.trim()) {
@@ -126,7 +130,7 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
     
     // If there are errors, switch to the tab containing the first error
     if (Object.keys(errors).length > 0) {
-      if (errors.name || errors.email || errors.phone || errors.address) {
+      if (errors.first_name || errors.last_name || errors.email || errors.phone || errors.address) {
         setActiveTab("basic");
       } else if (errors.username || errors.password) {
         setActiveTab("credentials");
@@ -149,21 +153,14 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
       isEditing ? "Updating customer..." : "Creating customer..."
     );
 
-    // Split the form data into user and customer fields
-    // The API expects user data in a nested object
-    // Extract first name and last name from the full name
-    const nameParts = formData.name.trim().split(' ');
-    const first_name = nameParts[0] || '';
-    const last_name = nameParts.slice(1).join(' ') || '';
-
     const dataToSend = {
       phone: formData.phone,
       address: formData.address || '',
       user: {
         email: formData.email,
         username: formData.username || '',
-        first_name,
-        last_name
+        first_name: formData.first_name,
+        last_name: formData.last_name
       }
     };
 
@@ -211,9 +208,8 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
                   if (userField === 'email') formattedErrors['email'] = msg;
                   else if (userField === 'username') formattedErrors['username'] = msg;
                   else if (userField === 'password') formattedErrors['password'] = msg;
-                  else if (userField === 'first_name' || userField === 'last_name') {
-                    formattedErrors['name'] = msg;
-                  }
+                  else if (userField === 'first_name') formattedErrors['first_name'] = msg;
+                  else if (userField === 'last_name') formattedErrors['last_name'] = msg;
                 });
               } else {
                 formattedErrors['user'] = Array.isArray(messages) ? messages[0] : messages.toString();
@@ -223,7 +219,7 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
             }
             
             // Ensure we switch to the appropriate tab for the error
-            if (field === 'name' || field === 'email' || field === 'phone' || field === 'address' || 
+            if (field === 'first_name' || field === 'last_name' || field === 'email' || field === 'phone' || field === 'address' || 
                 field === 'user') {
               setActiveTab("basic");
             } else if (field === 'username' || field === 'password') {
@@ -292,19 +288,34 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="p-0 pt-4">
               <div className="grid gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    required
-                    className={formErrors.name ? "border-destructive" : ""}
-                  />
-                  {formErrors.name && (
-                    <p className="text-destructive text-sm">{formErrors.name}</p>
-                  )}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="first_name">First Name</Label>
+                    <Input
+                      id="first_name"
+                      name="first_name"
+                      value={formData.first_name}
+                      onChange={handleChange}
+                      required
+                      className={formErrors.first_name ? "border-destructive" : ""}
+                    />
+                    {formErrors.first_name && (
+                      <p className="text-destructive text-sm">{formErrors.first_name}</p>
+                    )}
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="last_name">Last Name</Label>
+                    <Input
+                      id="last_name"
+                      name="last_name"
+                      value={formData.last_name}
+                      onChange={handleChange}
+                      className={formErrors.last_name ? "border-destructive" : ""}
+                    />
+                    {formErrors.last_name && (
+                      <p className="text-destructive text-sm">{formErrors.last_name}</p>
+                    )}
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="email">Email</Label>
