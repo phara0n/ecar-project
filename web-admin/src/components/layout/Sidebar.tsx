@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { 
   BarChart3, 
   Users, 
@@ -12,6 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { authService } from "@/lib/api";
+import { toast } from "sonner";
 
 const navItems = [
   {
@@ -56,6 +58,20 @@ interface SidebarProps {
 }
 
 export function Sidebar({ className }: SidebarProps) {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    // Show loading toast
+    const toastId = toast.loading("Logging out...");
+    
+    // Simulate a small delay for better UX
+    setTimeout(() => {
+      authService.logout();
+      toast.success("Logged out successfully", { id: toastId });
+      navigate('/login');
+    }, 500);
+  };
+
   return (
     <div className={cn("pb-12 bg-sidebar text-sidebar-foreground w-64 border-r border-sidebar-border", className)}>
       <div className="py-4 px-3 flex items-center justify-center">
@@ -82,6 +98,7 @@ export function Sidebar({ className }: SidebarProps) {
         <Button 
           variant="ghost" 
           className="w-full justify-start text-sidebar-foreground"
+          onClick={handleLogout}
         >
           <LogOut className="mr-2 h-5 w-5" />
           Logout

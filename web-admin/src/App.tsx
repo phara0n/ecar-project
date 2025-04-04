@@ -4,6 +4,8 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { DashboardLayout } from './components/layout/DashboardLayout';
+import { authService } from './lib/api';
+import { Toaster } from 'sonner';
 import './App.css';
 
 // Protected route wrapper
@@ -13,7 +15,7 @@ function RequireAuth({ children }: { children: ReactElement }) {
 
   useEffect(() => {
     // Check for authentication status
-    const authStatus = localStorage.getItem('isAuthenticated') === 'true';
+    const authStatus = authService.checkAuth();
     setIsAuthenticated(authStatus);
   }, []);
 
@@ -33,6 +35,9 @@ function RequireAuth({ children }: { children: ReactElement }) {
 function App() {
   return (
     <Router>
+      {/* Toast notifications */}
+      <Toaster position="top-right" richColors />
+      
       <Routes>
         <Route path="/login" element={<Login />} />
         

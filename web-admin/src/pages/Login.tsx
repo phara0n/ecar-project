@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { authService } from "@/lib/api";
+import { toast } from "sonner";
 
 export function Login() {
   const navigate = useNavigate();
@@ -27,23 +29,37 @@ export function Login() {
     setLoading(true);
     setError("");
 
+    // Show loading toast
+    const toastId = toast.loading("Logging in...");
+
     try {
-      // For now, let's implement a mock login
-      // Later we'll connect to the Django backend
-      if (credentials.username === "admin" && credentials.password === "Phara0n$") {
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        
-        // Store auth token or user info in localStorage
-        localStorage.setItem("isAuthenticated", "true");
-        
-        // Redirect to dashboard
-        navigate("/");
-      } else {
-        throw new Error("Invalid credentials");
+      // Real login with Django backend
+      await authService.login(credentials.username, credentials.password);
+      
+      // Update toast on success
+      toast.success("Login successful!", { id: toastId });
+      
+      // Redirect to dashboard on success
+      navigate("/");
+    } catch (err: any) {
+      console.error("Login error:", err);
+      
+      // Extract error message from response
+      let errorMessage = "An error occurred during login. Please try again.";
+      
+      if (err.response?.data?.detail) {
+        errorMessage = err.response.data.detail;
+      } else if (err.response?.data?.non_field_errors) {
+        errorMessage = err.response.data.non_field_errors[0];
+      } else if (err.message) {
+        errorMessage = err.message;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to login");
+      
+      // Set error state
+      setError(errorMessage);
+      
+      // Update toast with error
+      toast.error(errorMessage, { id: toastId });
     } finally {
       setLoading(false);
     }
