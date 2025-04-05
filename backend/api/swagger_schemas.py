@@ -27,7 +27,9 @@ class CarDocsSerializer(serializers.ModelSerializer):
     class Meta:
         model = Car
         fields = ('id', 'customer', 'make', 'model', 'year', 'license_plate', 
-                 'vin', 'fuel_type', 'mileage')
+                 'vin', 'fuel_type', 'mileage', 'initial_mileage', 'average_daily_mileage',
+                 'next_service_date', 'next_service_mileage', 'last_service_date',
+                 'last_service_mileage', 'created_at', 'updated_at')
         ref_name = 'CarDocs'
 
 class ServiceItemDocsSerializer(serializers.ModelSerializer):
@@ -79,11 +81,31 @@ class NotificationDocsSerializer(serializers.ModelSerializer):
 
 class MileageUpdateDocsSerializer(serializers.ModelSerializer):
     car = serializers.PrimaryKeyRelatedField(read_only=True)
+    car_details = serializers.SerializerMethodField(read_only=True)
+    impact = serializers.SerializerMethodField(read_only=True)
     
     class Meta:
         model = MileageUpdate
-        fields = ('id', 'car', 'mileage', 'notes', 'reported_date')
+        fields = ('id', 'car', 'car_details', 'mileage', 'notes', 'reported_date', 'impact')
         ref_name = 'MileageUpdateDocs'
+        
+    def get_car_details(self, obj):
+        """Provides simplified car information for documentation"""
+        return {
+            "make": "Example Make",
+            "model": "Example Model",
+            "current_mileage": "Current mileage of the car",
+            "initial_mileage": "Initial mileage when car was added to system"
+        }
+        
+    def get_impact(self, obj):
+        """Documents how mileage updates affect service predictions"""
+        return {
+            "updates_car_mileage": "Updates the car's current mileage when higher than existing value",
+            "recalculates_daily_rate": "Triggers recalculation of average daily mileage",
+            "updates_predictions": "Updates next service date and mileage predictions",
+            "calculation_method": "Uses difference between updates for existing vehicles or difference from initial_mileage for pre-owned vehicles"
+        }
 
 class ServiceHistoryDocsSerializer(serializers.ModelSerializer):
     car = serializers.PrimaryKeyRelatedField(read_only=True)

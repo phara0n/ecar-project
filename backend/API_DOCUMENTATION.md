@@ -416,6 +416,10 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
       "vin": "1HGBH41JXMN109186",
       "fuel_type": "gasoline",
       "mileage": 15000,
+      "initial_mileage": 14500,
+      "average_daily_mileage": 50.0,
+      "next_service_date": "2023-10-01",
+      "next_service_mileage": 25000,
       "created_at": "2023-04-01T12:00:00Z",
       "updated_at": "2023-04-01T12:00:00Z"
     }
@@ -443,9 +447,18 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
   "license_plate": "123ABC",
   "vin": "1HGBH41JXMN109186",
   "fuel_type": "gasoline",
-  "mileage": 15000
+  "mileage": 15000,
+  "initial_mileage": 15000
 }
 ```
+
+**Notes about `initial_mileage`**:
+- `initial_mileage` represents the odometer reading when the car first enters the system
+- If not specified during creation, it will automatically be set to the same value as `mileage`
+- Once set, `initial_mileage` can only be modified by superadmins
+- This field is used as the absolute baseline for all average daily mileage calculations
+- For pre-owned vehicles, it should be set to the actual odometer reading at the time of registration
+- Regular users can only read this field; it's read-only for all non-superadmin users
 
 **Response:**
 ```json
@@ -460,8 +473,60 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
   "vin": "1HGBH41JXMN109186",
   "fuel_type": "gasoline",
   "mileage": 15000,
+  "initial_mileage": 15000,
+  "average_daily_mileage": 50.0,
+  "next_service_date": null,
+  "next_service_mileage": null,
   "created_at": "2023-04-01T12:00:00Z",
   "updated_at": "2023-04-01T12:00:00Z"
+}
+```
+
+### Update Car
+```
+PUT /api/cars/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "customer": 1,
+  "make": "Toyota",
+  "model": "Corolla",
+  "year": 2020,
+  "license_plate": "123ABC",
+  "vin": "1HGBH41JXMN109186",
+  "fuel_type": "gasoline",
+  "mileage": 16000
+}
+```
+
+**Note**: The `initial_mileage` field cannot be modified by regular users or through the API. Only superadmins can change this value through the Django admin interface.
+
+**Response:**
+```json
+{
+  "id": 1,
+  "customer": 1,
+  "customer_name": "John Doe",
+  "make": "Toyota",
+  "model": "Corolla",
+  "year": 2020,
+  "license_plate": "123ABC",
+  "vin": "1HGBH41JXMN109186",
+  "fuel_type": "gasoline",
+  "mileage": 16000,
+  "initial_mileage": 15000,
+  "average_daily_mileage": 50.0,
+  "next_service_date": "2023-10-01",
+  "next_service_mileage": 25000,
+  "created_at": "2023-04-01T12:00:00Z",
+  "updated_at": "2023-04-01T13:00:00Z"
 }
 ```
 
@@ -1590,5 +1655,140 @@ Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
 ```json
 {
   "status": "all notifications marked as read"
+}
+```
+
+## Mileage Tracking and Service Predictions
+
+The ECAR system includes sophisticated mileage tracking and service prediction capabilities. The following sections provide details about how these features work and what API endpoints are available.
+
+### Mileage Fields
+
+The Car model includes several fields related to mileage tracking:
+
+- `mileage`: The current mileage of the vehicle
+- `initial_mileage`: The mileage when the car was added to the system (read-only for non-superadmins)
+- `average_daily_mileage`: The calculated average kilometers driven per day
+- `next_service_date`: The predicted date for the next service
+- `next_service_mileage`: The predicted mileage at which the next service should occur
+
+### MileageUpdate Endpoint
+
+```
+POST /api/mileage-updates/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Request Body:**
+```json
+{
+  "car": 1,
+  "mileage": 16500,
+  "reported_date": "2023-05-01T12:00:00Z",
+  "notes": "Updated at gas station"
+}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "car": 1,
+  "mileage": 16500,
+  "reported_date": "2023-05-01T12:00:00Z",
+  "notes": "Updated at gas station",
+  "created_at": "2023-05-01T12:00:00Z",
+  "updated_at": "2023-05-01T12:00:00Z"
+}
+```
+
+### MileageUpdate Deletion Behavior
+
+```
+DELETE /api/mileage-updates/{id}/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```
+204 No Content
+```
+
+When a MileageUpdate is deleted, the system automatically handles the reversion of the car's mileage if needed:
+
+1. The system checks if the car's mileage was set by the deleted update
+2. If so, it intelligently determines the appropriate mileage value to revert to:
+   - Uses the most recent remaining mileage update if available
+   - Falls back to the highest service history mileage if no updates remain
+   - Never reverts below the car's `initial_mileage` value
+3. After reverting the mileage, the service predictions are recalculated automatically
+
+**Important May 27, 2024 Update**: The deletion behavior has been enhanced to ensure that the car's mileage is never allowed to fall below the `initial_mileage` value. This ensures data integrity for pre-owned vehicles.
+
+#### Special Handling for Pre-owned Vehicles:
+
+When dealing with pre-owned vehicles (cars with significant initial mileage):
+
+1. If all mileage updates are deleted, the car's mileage will fall back to the `initial_mileage` value
+2. The average daily mileage will be calculated based on:
+   - Actual mileage difference for vehicles with modest changes after addition 
+   - Adjusted rate (difference ÷ 7) for vehicles with significant (>500 km) post-creation driving
+   - Default value (50 km/day) for vehicles with minimal usage data
+
+### Average Daily Mileage Calculation
+
+The system calculates the average daily mileage using a sophisticated algorithm that takes into account:
+
+1. **Initial and Current Mileage**: Uses `initial_mileage` as the absolute baseline for calculations
+2. **Service History**: Incorporates mileage values from service records
+3. **Mileage Updates**: Includes all reported mileage updates
+4. **Time Periods**: Calculates mileage accumulation rates over different time periods
+
+#### Recent Enhancement (May 27, 2024)
+
+The average daily mileage calculation was recently enhanced to properly handle pre-owned vehicles:
+
+- **Pre-owned vehicles** (high initial mileage with small difference): Uses the actual mileage difference since being added to the system
+- **Vehicles with significant driving after creation** (>500 km): Uses adjusted rate based on mileage difference ÷ 7 days
+- **Vehicles with minimal mileage difference**: Uses default value (50 km/day)
+
+This ensures accurate service predictions for all vehicle types, especially pre-owned vehicles that already have significant mileage when added to the system.
+
+### Service Predictions API
+
+To fetch the latest service predictions for a car:
+
+```
+GET /api/cars/{id}/service_predictions/
+```
+
+**Headers:**
+```
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+```
+
+**Response:**
+```json
+{
+  "next_service_date": "2023-10-01",
+  "next_service_mileage": 25000,
+  "average_daily_mileage": 50.0,
+  "days_until_service": 120,
+  "kilometers_until_service": 9000,
+  "service_interval": {
+    "id": 1,
+    "name": "Oil Change",
+    "description": "Regular oil change service",
+    "mileage_interval": 10000,
+    "time_interval": 180
+  }
 }
 ``` 

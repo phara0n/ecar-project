@@ -4,7 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.contrib.auth.models import User
-from django.db.models import Q, Sum, F, DecimalField, Case, When
+from django.db.models import Q, Sum, F, DecimalField, Case, When, Max
 from django.db.models.functions import Coalesce
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification, ServiceInterval, MileageUpdate, ServiceHistory
 from .serializers import (
@@ -99,9 +99,13 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminUser]
     
     def get_serializer_class(self):
+        """
+        Return a simplified serializer for Swagger schema generation
+        to avoid circular references
+        """
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import UserDocsSerializer
-            return UserDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('UserDocsSerializer')
         return self.serializer_class
     
     @swagger_auto_schema(tags=['users'])
@@ -138,8 +142,8 @@ class CustomerViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import CustomerDocsSerializer
-            return CustomerDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('CustomerDocsSerializer')
         return self.serializer_class
     
     queryset = Customer.objects.all()
@@ -471,8 +475,8 @@ class CarViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import CarDocsSerializer
-            return CarDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('CarDocsSerializer')
         return self.serializer_class
     
     def get_queryset(self):
@@ -623,8 +627,8 @@ class ServiceViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import ServiceDocsSerializer
-            return ServiceDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('ServiceDocsSerializer')
         return self.serializer_class
     
     def list(self, request, *args, **kwargs):
@@ -1078,8 +1082,8 @@ class ServiceItemViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import ServiceItemDocsSerializer
-            return ServiceItemDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('ServiceItemDocsSerializer')
         return self.serializer_class
     
     def get_queryset(self):
@@ -1107,8 +1111,8 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import InvoiceDocsSerializer
-            return InvoiceDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('InvoiceDocsSerializer')
         return self.serializer_class
     
     def get_queryset(self):
@@ -1649,8 +1653,8 @@ class NotificationViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import NotificationDocsSerializer
-            return NotificationDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('NotificationDocsSerializer')
         return self.serializer_class
     
     def get_queryset(self):
@@ -2013,8 +2017,8 @@ class MileageUpdateViewSet(viewsets.ModelViewSet):
     
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import MileageUpdateDocsSerializer
-            return MileageUpdateDocsSerializer
+            from .swagger_utils import get_mileage_update_docs_serializer
+            return get_mileage_update_docs_serializer()
         return self.serializer_class
     
     @swagger_auto_schema(
@@ -2066,7 +2070,53 @@ class MileageUpdateViewSet(viewsets.ModelViewSet):
         tags=['vehicles']
     )
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        mileage_update = self.get_object()
+        car = mileage_update.car
+        current_mileage = mileage_update.mileage
+        
+        # Store reference to car and current mileage value before deletion
+        logger = logging.getLogger(__name__)
+        logger.info(f"Deleting MileageUpdate for car {car.id} ({car.make} {car.model}): {current_mileage} km")
+        
+        # Delete the mileage update
+        response = super().destroy(request, *args, **kwargs)
+        
+        # Determine the correct mileage for the car after deletion
+        # First, check if there are any remaining mileage updates
+        newest_mileage_update = MileageUpdate.objects.filter(car=car).order_by('-reported_date').first()
+        
+        # Also check for the highest service history mileage
+        highest_service_mileage = car.service_history.aggregate(Max('service_mileage'))['service_mileage__max'] or 0
+        
+        # Determine the new mileage value for the car
+        if newest_mileage_update:
+            # Use the most recent mileage update's value
+            new_mileage = max(newest_mileage_update.mileage, highest_service_mileage)
+            logger.info(f"Found newer mileage update with value: {newest_mileage_update.mileage} km")
+        else:
+            # Fall back to the highest service history mileage
+            new_mileage = highest_service_mileage
+            logger.info(f"No mileage updates found. Using highest service history mileage: {highest_service_mileage} km")
+            
+        # Never revert to a mileage lower than the initial_mileage
+        new_mileage = max(new_mileage, car.initial_mileage)
+        logger.info(f"Ensuring new mileage is not less than initial_mileage ({car.initial_mileage} km)")
+        
+        # Update the car's mileage if it was set by the deleted mileage update
+        if car.mileage == current_mileage:
+            logger.info(f"Updating car mileage from {car.mileage} km to {new_mileage} km")
+            car.mileage = new_mileage
+            car.save(update_fields=['mileage'])
+        else:
+            logger.info(f"Car mileage {car.mileage} km differs from deleted update ({current_mileage} km). Not changing.")
+        
+        # Update the car's service predictions after deleting a mileage update
+        car.refresh_from_db()  # Make sure we have the latest car data
+        car.update_service_predictions()
+        
+        logger.info(f"Service predictions updated. New average daily mileage: {car.average_daily_mileage}")
+        
+        return response
     
     def get_queryset(self):
         """
@@ -2120,8 +2170,8 @@ class ServiceIntervalViewSet(viewsets.ModelViewSet):
         to avoid circular references
         """
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import ServiceIntervalDocsSerializer
-            return ServiceIntervalDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('ServiceIntervalDocsSerializer')
         return self.serializer_class
     
     @swagger_auto_schema(
@@ -2246,8 +2296,8 @@ class ServiceHistoryViewSet(viewsets.ModelViewSet):
         to avoid circular references
         """
         if getattr(self, 'swagger_fake_view', False):
-            from .swagger_schemas import ServiceHistoryDocsSerializer
-            return ServiceHistoryDocsSerializer
+            from .swagger_utils import get_docs_serializer
+            return get_docs_serializer('ServiceHistoryDocsSerializer')
         return self.serializer_class
     
     @swagger_auto_schema(
