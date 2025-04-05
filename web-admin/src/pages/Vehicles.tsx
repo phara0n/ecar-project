@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Filter, Edit, Trash, Car, Wrench } from "lucide-react";
+import { Search, Plus, Filter, Edit, Trash, Car, Wrench, ArrowLeft } from "lucide-react";
 import { customerService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
@@ -25,6 +25,7 @@ interface Vehicle {
   mileage?: number;
   last_service_date?: string;
   next_service_date?: string;
+  last_service_mileage?: number;
   status?: string;
   created_at?: string;
   updated_at?: string;
@@ -78,9 +79,16 @@ export function Vehicles() {
 
   // Fetch vehicles based on filter
   useEffect(() => {
-    fetchVehicles();
+    const customerFilter = searchParams.get('customer');
+    if (customerFilter) {
+      // If customer filter is present in URL, fetch vehicles for that customer
+      fetchVehiclesByCustomer(parseInt(customerFilter));
+    } else {
+      // Otherwise fetch all vehicles
+      fetchVehicles();
+    }
     fetchCustomers(); // Get customers for the dropdown filter
-  }, []);
+  }, [searchParams]);
 
   const fetchVehicleForEdit = async (vehicleId: number) => {
     try {
@@ -101,7 +109,9 @@ export function Vehicles() {
         license_plate: vehicleData.license_plate,
         vin: vehicleData.vin,
         color: vehicleData.color || "",
-        mileage: vehicleData.mileage || 0
+        mileage: vehicleData.mileage || 0,
+        last_service_date: vehicleData.last_service_date || null,
+        last_service_mileage: vehicleData.last_service_mileage || null
       };
       
       setSelectedVehicle(vehicleFormData);
@@ -149,6 +159,48 @@ export function Vehicles() {
       console.error("Error fetching vehicles:", err);
       setError("Failed to load vehicles. Please try again.");
       toast.error("Failed to load vehicles");
+      // Set empty array on error to avoid filter errors
+      setVehicles([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchVehiclesByCustomer = async (customerId: number) => {
+    setLoading(true);
+    setError("");
+    
+    try {
+      console.log(`Fetching vehicles for customer ID: ${customerId}`);
+      const response = await vehicleService.getByCustomer(customerId);
+      
+      console.log("API Response:", response.data);
+      
+      // Handle different API response formats
+      let vehiclesData: Vehicle[] = [];
+      
+      if (Array.isArray(response.data)) {
+        // Direct array response
+        vehiclesData = response.data;
+      } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
+        // DRF paginated response
+        vehiclesData = response.data.results;
+      } else if (response.data && response.data.vehicles && Array.isArray(response.data.vehicles)) {
+        // Custom format with vehicles field
+        vehiclesData = response.data.vehicles;
+      }
+      
+      // Log what we found
+      console.log(`Found ${vehiclesData.length} vehicles for customer #${customerId}`);
+      
+      // Enrich vehicles with customer names
+      const enrichedVehicles = await enrichVehiclesWithCustomerNames(vehiclesData);
+      
+      setVehicles(enrichedVehicles);
+    } catch (err: any) {
+      console.error(`Error fetching vehicles for customer #${customerId}:`, err);
+      setError("Failed to load vehicles. Please try again.");
+      toast.error("Failed to load vehicles for this customer");
       // Set empty array on error to avoid filter errors
       setVehicles([]);
     } finally {
@@ -288,10 +340,26 @@ export function Vehicles() {
     : [];
 
   return (
-    <div className="space-y-6 w-full max-w-none">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Vehicles</h2>
+          {searchParams.get('customer') && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="mb-2" 
+              onClick={() => navigate('/customers')}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Customers
+            </Button>
+          )}
+          <h2 className="text-3xl font-bold tracking-tight">
+            {searchParams.get('customer') 
+              ? `Vehicles for ${customers.find(c => c.id === parseInt(searchParams.get('customer') || '0'))?.user.first_name || 'Customer'}`
+              : 'Vehicles'
+            }
+          </h2>
           <p className="text-muted-foreground">
             Manage vehicle records and service history
           </p>
@@ -315,8 +383,8 @@ export function Vehicles() {
         </div>
       </div>
 
-      <Card className="w-full max-w-none">
-        <CardHeader className="px-6">
+      <Card>
+        <CardHeader>
           <CardTitle>Vehicle List</CardTitle>
           <CardDescription>
             {loading 
@@ -325,7 +393,7 @@ export function Vehicles() {
             }
           </CardDescription>
         </CardHeader>
-        <CardContent className="px-6">
+        <CardContent>
           {loading ? (
             <div className="flex justify-center items-center py-8">
               <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
@@ -351,9 +419,9 @@ export function Vehicles() {
               )}
             </div>
           ) : (
-            <div className="rounded-md border w-full">
-              <div className="overflow-x-auto w-full">
-                <table className="w-full table-auto">
+            <div className="rounded-md border">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] table-auto">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="px-4 py-3 text-left text-sm font-medium">Vehicle</th>

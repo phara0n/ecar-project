@@ -159,6 +159,8 @@ export const vehicleService = USE_MOCK_API
       const transformedData = { 
         ...data,
         customer_id: data.customer,
+        last_service_date: data.last_service_date || null,
+        last_service_mileage: data.last_service_mileage || null
       };
       // Remove the original customer field to avoid conflicts
       delete transformedData.customer;
@@ -171,6 +173,8 @@ export const vehicleService = USE_MOCK_API
       const transformedData = { 
         ...data,
         customer_id: data.customer,
+        last_service_date: data.last_service_date || null,
+        last_service_mileage: data.last_service_mileage || null
       };
       // Remove the original customer field to avoid conflicts
       delete transformedData.customer;
@@ -183,17 +187,93 @@ export const vehicleService = USE_MOCK_API
 
 // Service services
 export const serviceService = {
-  getAll: () => api.get('/services/'),
+  getAll: () => {
+    console.log('Fetching all services');
+    return api.get('/services/').then(response => {
+      console.log('All services response data:', response.data);
+      
+      // If it's an array, log the first item for debugging
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        console.log('Sample service data format:', {
+          id: response.data[0].id,
+          technician: response.data[0].technician,
+          mileage: response.data[0].mileage,
+          technician_type: typeof response.data[0].technician,
+          mileage_type: typeof response.data[0].mileage
+        });
+      }
+      
+      return response;
+    });
+  },
+  
   getById: (id: number) => api.get(`/services/${id}/`),
-  getByVehicle: (vehicleId: number) => api.get(`/services/?car_id=${vehicleId}`),
+  
+  getByVehicle: (vehicleId: number) => {
+    console.log(`Fetching services specifically for vehicle ID: ${vehicleId}`);
+    
+    // Use specific filtering parameter to ensure we only get services for this vehicle
+    return api.get(`/services/?car_id=${vehicleId}`).then(response => {
+      const responseData = response.data;
+      const count = Array.isArray(responseData) 
+        ? responseData.length 
+        : (responseData.results ? responseData.results.length : 0);
+      
+      console.log(`Received ${count} services for vehicle ${vehicleId}`);
+      
+      if (count > 0) {
+        // Log the first item to verify the response structure
+        const firstItem = Array.isArray(responseData) 
+          ? responseData[0] 
+          : (responseData.results ? responseData.results[0] : null);
+          
+        if (firstItem) {
+          console.log('First service in response:', {
+            id: firstItem.id,
+            car_id: firstItem.car_id,
+            title: firstItem.title,
+            matches_requested_vehicle: firstItem.car_id === vehicleId
+          });
+        }
+      } else {
+        console.log(`No services found for vehicle ${vehicleId}`);
+      }
+      
+      return response;
+    });
+  },
+  
   create: (data: any) => {
     console.log('Creating service with data:', JSON.stringify(data, null, 2));
     return api.post('/services/', data);
   },
+  
   update: (id: number, data: any) => {
     console.log('Updating service', id, 'with data:', JSON.stringify(data, null, 2));
-    return api.patch(`/services/${id}/`, data);
+    console.log('Technician field (before):', data.technician, 'Type:', typeof data.technician);
+    console.log('Mileage field (before):', data.mileage, 'Type:', typeof data.mileage);
+    
+    // Create a clean copy of the data for the API
+    const apiData = { ...data };
+    
+    // Ensure mileage is sent as a number
+    if (apiData.mileage !== undefined) {
+      apiData.mileage = Number(apiData.mileage);
+    }
+    
+    // Ensure technician is sent as a string
+    if (apiData.technician !== undefined) {
+      apiData.technician = String(apiData.technician);
+    } else {
+      apiData.technician = ""; // Default to empty string
+    }
+    
+    console.log('Technician field (after):', apiData.technician, 'Type:', typeof apiData.technician);
+    console.log('Mileage field (after):', apiData.mileage, 'Type:', typeof apiData.mileage);
+    
+    return api.patch(`/services/${id}/`, apiData);
   },
+  
   delete: (id: number) => api.delete(`/services/${id}/`)
 };
 

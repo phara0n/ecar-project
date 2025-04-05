@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { customerService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ServiceHistorySection } from "./ServiceHistorySection";
 
 export interface VehicleFormData {
   id?: number;
@@ -17,6 +18,8 @@ export interface VehicleFormData {
   vin: string;
   color?: string;
   mileage?: number;
+  last_service_date?: string | null;
+  last_service_mileage?: number | null;
 }
 
 interface Customer {
@@ -61,7 +64,9 @@ export function VehicleDialog({
     license_plate: "",
     vin: "",
     color: "",
-    mileage: 0
+    mileage: 0,
+    last_service_date: null,
+    last_service_mileage: null
   };
   
   const [formData, setFormData] = useState<VehicleFormData>(defaultFormData);
@@ -152,6 +157,20 @@ export function VehicleDialog({
         customer: ""
       }));
     }
+  };
+  
+  const handleLastServiceDateChange = (date: string | null) => {
+    setFormData(prev => ({
+      ...prev,
+      last_service_date: date
+    }));
+  };
+  
+  const handleLastServiceMileageChange = (mileage: number | null) => {
+    setFormData(prev => ({
+      ...prev,
+      last_service_mileage: mileage
+    }));
   };
   
   const validateForm = () => {
@@ -248,174 +267,149 @@ export function VehicleDialog({
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Vehicle" : "Add New Vehicle"}</DialogTitle>
           <DialogDescription>
             {isEditing 
-              ? "Update the vehicle details below." 
-              : "Fill in the vehicle details below to add it to the system."}
+              ? "Update the vehicle information below." 
+              : "Fill out the form below to add a new vehicle."}
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Customer Selection */}
-            <div className="space-y-2 sm:col-span-2">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Customer dropdown */}
+            <div className="space-y-2">
               <Label htmlFor="customer">Customer</Label>
-              <Select 
-                value={formData.customer?.toString() || ""} 
+              <Select
+                value={formData.customer ? formData.customer.toString() : ""}
                 onValueChange={handleCustomerChange}
-                disabled={loading || (!!customerId && customerId > 0)}
+                disabled={customerId !== undefined || loading}
               >
-                <SelectTrigger id="customer" className={formErrors.customer ? "border-destructive" : ""}>
+                <SelectTrigger>
                   <SelectValue placeholder="Select customer" />
                 </SelectTrigger>
                 <SelectContent>
-                  {customers.map(customer => (
-                    <SelectItem key={customer.id} value={customer.id.toString()}>
-                      {customer.user.first_name} {customer.user.last_name} ({customer.user.email})
+                  {customers.map((customer) => (
+                    <SelectItem 
+                      key={customer.id} 
+                      value={customer.id.toString()}
+                    >
+                      {customer.user.first_name} {customer.user.last_name} - {customer.user.email}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {formErrors.customer && (
-                <p className="text-destructive text-sm">{formErrors.customer}</p>
-              )}
+              {formErrors.customer && <p className="text-red-500 text-sm">{formErrors.customer}</p>}
             </div>
             
-            {/* Make */}
-            <div className="space-y-2">
-              <Label htmlFor="make">Make</Label>
-              <Input
-                id="make"
-                name="make"
-                placeholder="e.g. Toyota"
-                value={formData.make}
-                onChange={handleInputChange}
-                disabled={loading}
-                className={formErrors.make ? "border-destructive" : ""}
-              />
-              {formErrors.make && (
-                <p className="text-destructive text-sm">{formErrors.make}</p>
-              )}
-            </div>
-            
-            {/* Model */}
-            <div className="space-y-2">
-              <Label htmlFor="model">Model</Label>
-              <Input
-                id="model"
-                name="model"
-                placeholder="e.g. Corolla"
-                value={formData.model}
-                onChange={handleInputChange}
-                disabled={loading}
-                className={formErrors.model ? "border-destructive" : ""}
-              />
-              {formErrors.model && (
-                <p className="text-destructive text-sm">{formErrors.model}</p>
-              )}
-            </div>
-            
-            {/* Year */}
+            {/* Year input */}
             <div className="space-y-2">
               <Label htmlFor="year">Year</Label>
               <Input
                 id="year"
                 name="year"
                 type="number"
-                min="1900"
-                max={new Date().getFullYear() + 1}
-                placeholder="e.g. 2022"
-                value={formData.year || ""}
+                value={formData.year}
                 onChange={handleInputChange}
                 disabled={loading}
-                className={formErrors.year ? "border-destructive" : ""}
               />
-              {formErrors.year && (
-                <p className="text-destructive text-sm">{formErrors.year}</p>
-              )}
+              {formErrors.year && <p className="text-red-500 text-sm">{formErrors.year}</p>}
             </div>
             
-            {/* Color */}
+            {/* Make input */}
             <div className="space-y-2">
-              <Label htmlFor="color">Color</Label>
+              <Label htmlFor="make">Make</Label>
               <Input
-                id="color"
-                name="color"
-                placeholder="e.g. Red"
-                value={formData.color || ""}
+                id="make"
+                name="make"
+                value={formData.make}
                 onChange={handleInputChange}
                 disabled={loading}
-                className={formErrors.color ? "border-destructive" : ""}
               />
-              {formErrors.color && (
-                <p className="text-destructive text-sm">{formErrors.color}</p>
-              )}
+              {formErrors.make && <p className="text-red-500 text-sm">{formErrors.make}</p>}
             </div>
             
-            {/* License Plate */}
+            {/* Model input */}
+            <div className="space-y-2">
+              <Label htmlFor="model">Model</Label>
+              <Input
+                id="model"
+                name="model"
+                value={formData.model}
+                onChange={handleInputChange}
+                disabled={loading}
+              />
+              {formErrors.model && <p className="text-red-500 text-sm">{formErrors.model}</p>}
+            </div>
+            
+            {/* License plate input */}
             <div className="space-y-2">
               <Label htmlFor="license_plate">License Plate</Label>
               <Input
                 id="license_plate"
                 name="license_plate"
-                placeholder="e.g. 123 TUN 4567"
                 value={formData.license_plate}
                 onChange={handleInputChange}
                 disabled={loading}
-                className={formErrors.license_plate ? "border-destructive" : ""}
               />
-              {formErrors.license_plate && (
-                <p className="text-destructive text-sm">{formErrors.license_plate}</p>
-              )}
+              {formErrors.license_plate && <p className="text-red-500 text-sm">{formErrors.license_plate}</p>}
             </div>
             
-            {/* VIN */}
+            {/* Color input */}
+            <div className="space-y-2">
+              <Label htmlFor="color">Color</Label>
+              <Input
+                id="color"
+                name="color"
+                value={formData.color || ""}
+                onChange={handleInputChange}
+                disabled={loading}
+              />
+            </div>
+            
+            {/* VIN input */}
             <div className="space-y-2">
               <Label htmlFor="vin">VIN</Label>
               <Input
                 id="vin"
                 name="vin"
-                placeholder="e.g. 1HGCM82633A123456"
                 value={formData.vin}
                 onChange={handleInputChange}
                 disabled={loading}
-                className={formErrors.vin ? "border-destructive" : ""}
               />
-              {formErrors.vin && (
-                <p className="text-destructive text-sm">{formErrors.vin}</p>
-              )}
+              {formErrors.vin && <p className="text-red-500 text-sm">{formErrors.vin}</p>}
             </div>
             
-            {/* Mileage */}
+            {/* Current mileage input */}
             <div className="space-y-2">
-              <Label htmlFor="mileage">Mileage (km)</Label>
+              <Label htmlFor="mileage">Current Mileage</Label>
               <Input
                 id="mileage"
                 name="mileage"
                 type="number"
-                min="0"
-                placeholder="e.g. 35000"
-                value={formData.mileage || ""}
+                value={formData.mileage || 0}
                 onChange={handleInputChange}
                 disabled={loading}
-                className={formErrors.mileage ? "border-destructive" : ""}
               />
-              {formErrors.mileage && (
-                <p className="text-destructive text-sm">{formErrors.mileage}</p>
-              )}
+              {formErrors.mileage && <p className="text-red-500 text-sm">{formErrors.mileage}</p>}
             </div>
           </div>
           
+          {/* Service History Section */}
+          <div className="border rounded-md mt-6">
+            <ServiceHistorySection 
+              lastServiceDate={formData.last_service_date}
+              lastServiceMileage={formData.last_service_mileage}
+              onLastServiceDateChange={handleLastServiceDateChange}
+              onLastServiceMileageChange={handleLastServiceMileageChange}
+              currentMileage={formData.mileage}
+            />
+          </div>
+          
           <DialogFooter>
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              disabled={loading}
-            >
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>

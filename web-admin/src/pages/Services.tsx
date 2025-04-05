@@ -1,16 +1,16 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, Edit, Trash, Car, ArrowLeft, Calendar, Wrench, CheckCircle, Clock, AlertCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { vehicleService, serviceService } from "@/lib/api";
+import { Plus, Search, Edit, Trash, Car, Calendar, Wrench, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { serviceService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
-import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ServiceDialog, ServiceFormData } from "@/components/ServiceDialog";
 
 // Interface for service data structure from API
@@ -34,6 +34,11 @@ interface ApiService {
 interface Service {
   id: number;
   vehicle: number;
+  vehicle_info?: {
+    make: string;
+    model: string;
+    license_plate: string;
+  };
   service_date: string;
   service_type: string;
   description: string;
@@ -61,63 +66,35 @@ interface Vehicle {
   mileage?: number;
 }
 
-export function VehicleServices() {
-  const { id } = useParams<{ id: string }>();
+export function Services() {
   const navigate = useNavigate();
-  const vehicleId = parseInt(id || "0");
-
-  // State variables
   const [searchTerm, setSearchTerm] = useState("");
   const [services, setServices] = useState<Service[]>([]);
-  const [vehicle, setVehicle] = useState<Vehicle | null>(null);
+  const [vehicles, setVehicles] = useState<Record<number, Vehicle>>({});
   const [loading, setLoading] = useState(true);
-  const [loadingVehicle, setLoadingVehicle] = useState(true);
   const [error, setError] = useState("");
-  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
   
+  // Dialog state for service deletion
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
+
   // Dialog state for adding/editing services
   const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Partial<ServiceFormData> | undefined>(undefined);
 
-  // Fetch vehicle details and service history
+  // Fetch all services on component mount
   useEffect(() => {
-    if (vehicleId) {
-      fetchVehicleDetails(vehicleId);
-      fetchServiceHistory(vehicleId);
-    } else {
-      setError("Invalid vehicle ID");
-      setLoading(false);
-      setLoadingVehicle(false);
-    }
-  }, [vehicleId]);
+    fetchServices();
+  }, []);
 
-  // Fetch vehicle details
-  const fetchVehicleDetails = async (id: number) => {
-    setLoadingVehicle(true);
-
-    try {
-      const response = await vehicleService.getById(id);
-      setVehicle(response.data);
-    } catch (err) {
-      console.error("Error fetching vehicle details:", err);
-      toast.error("Failed to load vehicle details");
-      setVehicle(null);
-    } finally {
-      setLoadingVehicle(false);
-    }
-  };
-
-  // Fetch service history for the vehicle
-  const fetchServiceHistory = async (vehicleId: number) => {
+  // Fetch all services
+  const fetchServices = async () => {
     setLoading(true);
     setError("");
 
     try {
-      console.log(`Fetching service history for vehicle ID: ${vehicleId}`);
-      const response = await serviceService.getByVehicle(vehicleId);
-      
+      const response = await serviceService.getAll();
       let apiServicesData: ApiService[] = [];
       
       if (Array.isArray(response.data)) {
@@ -128,23 +105,21 @@ export function VehicleServices() {
         apiServicesData = response.data.services;
       }
       
-      // Ensure we only process services that match this vehicle ID
-      apiServicesData = apiServicesData.filter(service => {
-        const matches = service.car_id === vehicleId;
-        if (!matches) {
-          console.warn(`Filtering out service ID ${service.id} because car_id ${service.car_id} doesn't match requested vehicleId ${vehicleId}`);
-        }
-        return matches;
-      });
-      
-      console.log(`Filtered ${apiServicesData.length} services for vehicle ID ${vehicleId}`);
-      
       // Transform API service data to our expected service format
       const servicesData: Service[] = apiServicesData.map(apiService => {
-        // Extra verification to ensure we only process services for this vehicle
-        if (apiService.car_id !== vehicleId) {
-          console.error(`Service ID ${apiService.id} has car_id ${apiService.car_id} which doesn't match vehicleId ${vehicleId}`);
-        }
+        console.log("Raw service data:", apiService); // Log raw service data
+        
+        // Ensure numeric values are properly handled
+        const mileage = apiService.mileage !== undefined && apiService.mileage !== null 
+          ? Number(apiService.mileage) 
+          : null;
+          
+        // Ensure technician is properly handled
+        const technician = apiService.technician !== undefined 
+          ? String(apiService.technician) 
+          : '';
+          
+        console.log(`Service ID ${apiService.id} - Technician: "${technician}", Mileage: ${mileage}`);
         
         return {
           id: apiService.id,
@@ -152,12 +127,12 @@ export function VehicleServices() {
           service_date: apiService.scheduled_date,
           service_type: apiService.title,
           description: apiService.description,
-          cost: apiService.cost,
-          mileage: apiService.mileage,
+          cost: apiService.cost !== undefined && apiService.cost !== null ? Number(apiService.cost) : 0,
+          mileage: mileage,
           status: apiService.status,
-          technician: apiService.technician,
-          notes: apiService.notes,
-          parts_used: apiService.parts_used,
+          technician: technician,
+          notes: apiService.notes || '',
+          parts_used: apiService.parts_used || '',
           created_at: apiService.created_at,
           updated_at: apiService.updated_at
         };
@@ -166,15 +141,74 @@ export function VehicleServices() {
       // Sort services by date (newest first)
       servicesData.sort((a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime());
       
-      console.log(`Setting ${servicesData.length} services for vehicle ID ${vehicleId}`);
-      setServices(servicesData);
+      // Fetch vehicle information for each service
+      await fetchVehicleInfoForServices(servicesData);
+      
     } catch (err: any) {
-      console.error("Error fetching service history:", err);
-      setError("Failed to load service history. Please try again.");
-      toast.error("Failed to load service history");
+      console.error("Error fetching services:", err);
+      setError("Failed to load services. Please try again.");
+      toast.error("Failed to load services");
       setServices([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch vehicle information for all services
+  const fetchVehicleInfoForServices = async (servicesData: Service[]) => {
+    try {
+      // Get unique vehicle IDs and filter out undefined or invalid values
+      const vehicleIds = [...new Set(servicesData.map(service => service.vehicle))]
+        .filter(id => id !== undefined && id !== null && !isNaN(id));
+      
+      // Fetch vehicles
+      const vehicleMap: Record<number, Vehicle> = {};
+      
+      await Promise.all(
+        vehicleIds.map(async (vehicleId) => {
+          try {
+            const response = await vehicleService.getById(vehicleId);
+            vehicleMap[vehicleId] = response.data;
+          } catch (error) {
+            console.error(`Error fetching vehicle ${vehicleId}:`, error);
+            // Create a placeholder for missing vehicles
+            vehicleMap[vehicleId] = {
+              id: vehicleId,
+              customer: 0,
+              make: "Unknown",
+              model: "Vehicle",
+              year: 0,
+              license_plate: `ID: ${vehicleId}`,
+              vin: ""
+            };
+          }
+        })
+      );
+      
+      // Add vehicle info to each service
+      const enrichedServices = servicesData.map(service => {
+        // Check if service.vehicle is valid and exists in vehicleMap
+        const hasValidVehicle = service.vehicle !== undefined && 
+                               service.vehicle !== null && 
+                               !isNaN(service.vehicle) && 
+                               vehicleMap[service.vehicle];
+        
+        return {
+          ...service,
+          vehicle_info: hasValidVehicle ? {
+            make: vehicleMap[service.vehicle].make,
+            model: vehicleMap[service.vehicle].model,
+            license_plate: vehicleMap[service.vehicle].license_plate
+          } : undefined
+        };
+      });
+      
+      setVehicles(vehicleMap);
+      setServices(enrichedServices);
+    } catch (err) {
+      console.error("Error fetching vehicle information:", err);
+      // Still show services even if vehicle info fails
+      setServices(servicesData);
     }
   };
 
@@ -186,8 +220,6 @@ export function VehicleServices() {
 
   // Handle editing a service record
   const handleEditService = (service: Service) => {
-    console.log("Original service data:", service);
-    
     // Convert service object to form data format
     const serviceFormData: Partial<ServiceFormData> = {
       id: service.id,
@@ -195,15 +227,13 @@ export function VehicleServices() {
       service_date: new Date(service.service_date),
       service_type: service.service_type,
       description: service.description,
-      cost: typeof service.cost === 'number' ? service.cost : 0,
-      mileage: typeof service.mileage === 'number' ? service.mileage : 0,
+      cost: service.cost,
+      mileage: service.mileage,
       status: service.status,
-      technician: service.technician || "",
-      notes: service.notes || "",
-      parts_used: service.parts_used || ""
+      technician: service.technician,
+      notes: service.notes,
+      parts_used: service.parts_used
     };
-    
-    console.log("Converted form data for edit:", serviceFormData);
     
     setSelectedService(serviceFormData);
     setIsServiceDialogOpen(true);
@@ -234,9 +264,9 @@ export function VehicleServices() {
     }
   };
 
-  // Go back to vehicles list
-  const handleBackToVehicles = () => {
-    navigate("/vehicles");
+  // Handle viewing vehicle details
+  const handleViewVehicle = (vehicleId: number) => {
+    navigate(`/vehicles/${vehicleId}/services`);
   };
 
   // Filter services based on search term and active tab
@@ -245,7 +275,10 @@ export function VehicleServices() {
       service.service_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
       service.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (service.technician && service.technician.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (service.notes && service.notes.toLowerCase().includes(searchTerm.toLowerCase()));
+      (service.notes && service.notes.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (service.vehicle_info && 
+        (`${service.vehicle_info.make} ${service.vehicle_info.model}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        service.vehicle_info.license_plate.toLowerCase().includes(searchTerm.toLowerCase())));
     
     // Filter based on active tab
     if (activeTab === "all") {
@@ -295,39 +328,10 @@ export function VehicleServices() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="mb-2" 
-            onClick={handleBackToVehicles}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Vehicles
-          </Button>
-          
-          <h2 className="text-3xl font-bold tracking-tight">
-            {loadingVehicle ? (
-              <Skeleton className="h-9 w-60" />
-            ) : vehicle ? (
-              <>
-                {vehicle.make} {vehicle.model} Service History
-              </>
-            ) : (
-              "Vehicle Service History"
-            )}
-          </h2>
-          
-          {!loadingVehicle && vehicle && (
-            <div className="text-muted-foreground">
-              <p className="flex items-center gap-1">
-                <Car className="h-4 w-4" /> 
-                {vehicle.year} • {vehicle.license_plate || "No plate"} • VIN: {vehicle.vin || "N/A"}
-              </p>
-              {vehicle.mileage && (
-                <p className="mt-1">Current Mileage: {vehicle.mileage.toLocaleString()} km</p>
-              )}
-            </div>
-          )}
+          <h2 className="text-3xl font-bold tracking-tight">Service Records</h2>
+          <p className="text-muted-foreground">
+            Manage all service records across vehicles
+          </p>
         </div>
         <Button className="flex items-center gap-2" onClick={handleAddService}>
           <Plus className="h-4 w-4" />
@@ -350,7 +354,7 @@ export function VehicleServices() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle>Service History</CardTitle>
+          <CardTitle>All Services</CardTitle>
           <CardDescription>
             {loading 
               ? "Loading service records..." 
@@ -391,17 +395,17 @@ export function VehicleServices() {
                 variant="outline" 
                 size="sm" 
                 className="ml-4"
-                onClick={() => fetchServiceHistory(vehicleId)}
+                onClick={fetchServices}
               >
                 Try Again
               </Button>
             </div>
           ) : filteredServices.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchTerm ? (
-                <p>No service records match your search criteria.</p>
+              {searchTerm || activeTab !== "all" ? (
+                <p>No service records match your search criteria or selected filter.</p>
               ) : (
-                <p>No service records found for this vehicle.</p>
+                <p>No service records found. Add your first service record to get started.</p>
               )}
             </div>
           ) : (
@@ -421,11 +425,25 @@ export function VehicleServices() {
                         </span>
                       </div>
                     </div>
+                    
+                    {service.vehicle_info && (
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto text-primary font-medium mb-2"
+                        onClick={() => handleViewVehicle(service.vehicle)}
+                      >
+                        <Car className="h-4 w-4 mr-1" />
+                        {service.vehicle_info.make} {service.vehicle_info.model}
+                        {service.vehicle_info.license_plate && ` (${service.vehicle_info.license_plate})`}
+                      </Button>
+                    )}
+                    
                     <p className="text-sm mb-2">{service.description}</p>
                     
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-3">
                       <div>
                         <p className="text-xs text-muted-foreground">Mileage</p>
+                        {console.log(`Service ${service.id} mileage:`, service.mileage, typeof service.mileage)}
                         {(() => {
                           // Defensive rendering for mileage field
                           try {
@@ -458,6 +476,7 @@ export function VehicleServices() {
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Technician</p>
+                        {console.log(`Service ${service.id} technician:`, service.technician, typeof service.technician)}
                         {(() => {
                           // Defensive rendering for technician field
                           try {
@@ -488,26 +507,28 @@ export function VehicleServices() {
                         <p className="text-sm">{service.parts_used}</p>
                       </div>
                     )}
+                    
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="h-8"
+                        onClick={() => handleEditService(service)}
+                      >
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteService(service)}
+                      >
+                        <Trash className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
                   </CardContent>
-                  <CardFooter className="flex justify-end p-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      title="Edit Service"
-                      onClick={() => handleEditService(service)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      title="Delete Service"
-                      onClick={() => handleDeleteService(service)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  </CardFooter>
                 </Card>
               ))}
             </div>
@@ -519,9 +540,8 @@ export function VehicleServices() {
       <ServiceDialog
         open={isServiceDialogOpen}
         onOpenChange={setIsServiceDialogOpen}
-        vehicleId={vehicleId}
         service={selectedService}
-        onSuccess={fetchServiceHistory}
+        onSuccess={fetchServices}
       />
 
       {/* Delete Confirmation Dialog */}

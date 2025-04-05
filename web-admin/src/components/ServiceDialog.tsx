@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { serviceService } from "@/lib/api";
+import { serviceService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
-import { CalendarIcon, LoaderCircle } from "lucide-react";
+import { CalendarIcon, LoaderCircle, Car } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -31,9 +31,19 @@ export interface ServiceFormData {
 interface ServiceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  vehicleId: number;
+  vehicleId?: number;
   service?: Partial<ServiceFormData>;
   onSuccess: () => void;
+}
+
+// Interface for vehicle data
+interface Vehicle {
+  id: number;
+  make: string;
+  model: string;
+  year: number;
+  license_plate: string;
+  mileage?: number;
 }
 
 // Array of common service types for select options
@@ -67,9 +77,18 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
   // Determine if this is an edit or create operation
   const isEditing = !!service?.id;
   
+  // Vehicle selection is needed when adding from Services page
+  const isVehicleSelectionMode = vehicleId === undefined;
+  
+  // State for available vehicles when in vehicle selection mode
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [lastRecordedMileage, setLastRecordedMileage] = useState<number | null>(null);
+  
   // Form state
   const [formData, setFormData] = useState<ServiceFormData>({
-    vehicle: vehicleId,
+    vehicle: vehicleId || 0,
     service_date: new Date(),
     service_type: "",
     description: "",
@@ -85,29 +104,103 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   
+  // Load available vehicles when dialog opens in vehicle selection mode
+  useEffect(() => {
+    if (open && isVehicleSelectionMode) {
+      fetchVehicles();
+    }
+  }, [open, isVehicleSelectionMode]);
+  
+  // Fetch vehicles for selection
+  const fetchVehicles = async () => {
+    setLoadingVehicles(true);
+    try {
+      const response = await vehicleService.getAll();
+      let vehiclesData = Array.isArray(response.data) ? response.data : 
+        (response.data?.results || []);
+      
+      setVehicles(vehiclesData);
+    } catch (error) {
+      console.error("Error fetching vehicles:", error);
+      toast.error("Failed to load vehicles");
+    } finally {
+      setLoadingVehicles(false);
+    }
+  };
+  
+  // Get vehicle details when a vehicle is selected or when editing with fixed vehicleId
+  useEffect(() => {
+    const currentVehicleId = isVehicleSelectionMode ? formData.vehicle : vehicleId;
+    
+    if (currentVehicleId && currentVehicleId > 0) {
+      fetchVehicleDetails(currentVehicleId);
+    }
+  }, [formData.vehicle, vehicleId, isVehicleSelectionMode, open]);
+  
+  // Fetch vehicle details including last mileage
+  const fetchVehicleDetails = async (id: number) => {
+    try {
+      const response = await vehicleService.getById(id);
+      const vehicleData = response.data;
+      
+      setSelectedVehicle(vehicleData);
+      
+      // Set the last recorded mileage from the vehicle data
+      if (vehicleData.mileage) {
+        setLastRecordedMileage(vehicleData.mileage);
+        
+        // If not editing and mileage is 0, set it to the vehicle's current mileage
+        if (!isEditing && formData.mileage === 0) {
+          setFormData(prev => ({
+            ...prev,
+            mileage: vehicleData.mileage
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(`Error fetching vehicle ${id}:`, error);
+      setSelectedVehicle(null);
+      setLastRecordedMileage(null);
+    }
+  };
+  
   // Initialize form with service data if editing
   useEffect(() => {
     if (service && open) {
+      // Explicitly type and convert fields when initializing form data from service
       setFormData({
         ...formData,
         ...service,
         // Ensure vehicle ID is set correctly
-        vehicle: vehicleId,
+        vehicle: service.vehicle || vehicleId || 0,
         // Convert string date to Date object
         service_date: service.service_date ? new Date(service.service_date) : new Date(),
         // Ensure numeric fields are numbers
         cost: typeof service.cost === 'number' ? service.cost : 0,
-        mileage: typeof service.mileage === 'number' ? service.mileage : 0
+        mileage: typeof service.mileage === 'number' ? service.mileage : 0,
+        // Ensure string fields are strings
+        service_type: service.service_type || "",
+        description: service.description || "",
+        technician: service.technician !== undefined ? String(service.technician) : "",
+        notes: service.notes !== undefined ? String(service.notes) : "",
+        parts_used: service.parts_used !== undefined ? String(service.parts_used) : "",
+        status: service.status || "scheduled"
+      });
+      
+      console.log("Initialized form data for editing:", {
+        ...service,
+        technician: String(service.technician),
+        mileage: Number(service.mileage)
       });
     } else if (open) {
       // Reset form when opening for a new service
       setFormData({
-        vehicle: vehicleId,
+        vehicle: vehicleId || 0,
         service_date: new Date(),
         service_type: "",
         description: "",
         cost: 0,
-        mileage: 0,
+        mileage: lastRecordedMileage || 0,
         status: "scheduled",
         technician: "",
         notes: "",
@@ -117,7 +210,7 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
     
     // Clear errors when dialog opens/closes
     setErrors({});
-  }, [service, open, vehicleId]);
+  }, [service, open, vehicleId, lastRecordedMileage]);
   
   // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -131,11 +224,25 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
       });
     }
     
-    // Update form data
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    // Special handling for technician field
+    if (name === 'technician') {
+      console.log(`Processing technician field: "${value}"`);
+      // Update form data with explicit string handling
+      setFormData(prevState => {
+        const updatedData = {
+          ...prevState,
+          technician: value !== undefined ? String(value) : ''
+        };
+        console.log('Updated technician in form data:', updatedData.technician, typeof updatedData.technician);
+        return updatedData;
+      });
+    } else {
+      // Update form data for other fields
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
   };
   
   // Handle changes for number inputs
@@ -174,6 +281,25 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
     });
   };
   
+  // Handle vehicle selection change
+  const handleVehicleChange = (vehicleId: string) => {
+    const numericId = parseInt(vehicleId, 10);
+    
+    // Clear error for this field
+    if (errors.vehicle) {
+      setErrors({
+        ...errors,
+        vehicle: ""
+      });
+    }
+    
+    // Update form data
+    setFormData({
+      ...formData,
+      vehicle: numericId
+    });
+  };
+  
   // Handle date selection
   const handleDateChange = (date: Date | undefined) => {
     if (date) {
@@ -197,6 +323,11 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
     
+    // Vehicle selection validation
+    if (isVehicleSelectionMode && (!formData.vehicle || formData.vehicle <= 0)) {
+      newErrors.vehicle = "Please select a vehicle";
+    }
+    
     // Required fields validation
     if (!formData.service_type) {
       newErrors.service_type = "Service type is required";
@@ -208,6 +339,11 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
     
     if (formData.mileage <= 0) {
       newErrors.mileage = "Mileage must be greater than 0";
+    }
+    
+    // Validate that mileage is not less than last recorded mileage
+    if (lastRecordedMileage !== null && formData.mileage < lastRecordedMileage) {
+      newErrors.mileage = `Mileage cannot be less than the last recorded mileage (${lastRecordedMileage} km)`;
     }
     
     if (formData.cost < 0) {
@@ -246,12 +382,13 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
         cost: formData.cost,
         mileage: formData.mileage,
         status: formData.status,
-        technician: formData.technician || '',
+        technician: formData.technician !== undefined ? String(formData.technician) : '',
         notes: formData.notes || '',
         parts_used: formData.parts_used || ''
       };
       
       console.log('Submitting service data to API:', apiData);
+      console.log('Technician value (explicit):', typeof apiData.technician, apiData.technician);
       
       if (isEditing && service?.id) {
         // Update existing service
@@ -309,6 +446,52 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Vehicle Selection (only shown when adding from Services page) */}
+          {isVehicleSelectionMode && (
+            <div className="space-y-2">
+              <Label htmlFor="vehicle" className={errors.vehicle ? "text-destructive" : ""}>
+                Vehicle <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={formData.vehicle ? String(formData.vehicle) : ""}
+                onValueChange={handleVehicleChange}
+                disabled={loadingVehicles}
+              >
+                <SelectTrigger className={errors.vehicle ? "border-destructive" : ""}>
+                  <SelectValue placeholder="Select a vehicle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {vehicles.map((vehicle) => (
+                    <SelectItem key={vehicle.id} value={String(vehicle.id)}>
+                      {vehicle.year} {vehicle.make} {vehicle.model} ({vehicle.license_plate})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.vehicle && <p className="text-sm text-destructive">{errors.vehicle}</p>}
+            </div>
+          )}
+          
+          {/* Display selected vehicle info */}
+          {selectedVehicle && (
+            <div className="bg-muted p-3 rounded-md">
+              <div className="flex items-center gap-2 text-sm">
+                <Car className="h-4 w-4 text-muted-foreground" />
+                <span className="font-medium">
+                  {selectedVehicle.year} {selectedVehicle.make} {selectedVehicle.model}
+                </span>
+                {selectedVehicle.license_plate && (
+                  <span className="text-muted-foreground">({selectedVehicle.license_plate})</span>
+                )}
+              </div>
+              {lastRecordedMileage !== null && (
+                <div className="text-sm mt-1 text-muted-foreground">
+                  Last recorded mileage: {lastRecordedMileage.toLocaleString()} km
+                </div>
+              )}
+            </div>
+          )}
+          
           {/* Service Type */}
           <div className="space-y-2">
             <Label htmlFor="service_type" className={errors.service_type ? "text-destructive" : ""}>
@@ -392,7 +575,7 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
                 onChange={(e) => handleNumberChange(e, "mileage")}
                 placeholder="Vehicle mileage"
                 className={errors.mileage ? "border-destructive" : ""}
-                min="0"
+                min={lastRecordedMileage || 0}
               />
               {errors.mileage && <p className="text-sm text-destructive">{errors.mileage}</p>}
             </div>
@@ -444,11 +627,16 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
               <Label htmlFor="technician" className={errors.technician ? "text-destructive" : ""}>
                 Technician
               </Label>
+              {console.log('Technician field in form:', formData.technician, typeof formData.technician)}
               <Input
                 id="technician"
                 name="technician"
                 value={formData.technician || ""}
-                onChange={handleChange}
+                onChange={(e) => {
+                  console.log('Technician input changed:', e.target.value);
+                  handleChange(e);
+                }}
+                onBlur={(e) => console.log('Technician input blurred:', e.target.value, formData.technician)}
                 placeholder="Technician name"
                 className={errors.technician ? "border-destructive" : ""}
               />

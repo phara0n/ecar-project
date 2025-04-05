@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Filter, Edit, Trash, Car } from "lucide-react";
+import { Search, Plus, Filter, Edit, Trash, Car, Eye } from "lucide-react";
 import { customerService, vehicleService } from "@/lib/api";
 import { toast } from "sonner";
 import { CustomerDialog, CustomerFormData } from "@/components/CustomerDialog";
+import { CustomerDetailsDialog } from "@/components/CustomerDetailsDialog";
 import { DeleteConfirmationDialog } from "@/components/DeleteConfirmationDialog";
+import { useNavigate } from "react-router-dom";
 
 // Updated interface to match backend API response structure
 interface User {
@@ -35,9 +37,13 @@ export function Customers() {
   
   // Dialog state
   const [isCustomerDialogOpen, setIsCustomerDialogOpen] = useState(false);
+  const [isCustomerDetailsDialogOpen, setIsCustomerDetailsDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerFormData | undefined>(undefined);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | undefined>(undefined);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchCustomers();
@@ -65,7 +71,33 @@ export function Customers() {
         customersData = response.data.customers;
       }
       
-      setCustomers(customersData);
+      // Fetch vehicle counts for each customer
+      const customersWithVehicleCounts = await Promise.all(
+        customersData.map(async (customer) => {
+          try {
+            const vehiclesResponse = await vehicleService.getByCustomer(customer.id);
+            let vehicles = [];
+            
+            if (Array.isArray(vehiclesResponse.data)) {
+              vehicles = vehiclesResponse.data;
+            } else if (vehiclesResponse.data && vehiclesResponse.data.results && Array.isArray(vehiclesResponse.data.results)) {
+              vehicles = vehiclesResponse.data.results;
+            } else if (vehiclesResponse.data && vehiclesResponse.data.vehicles && Array.isArray(vehiclesResponse.data.vehicles)) {
+              vehicles = vehiclesResponse.data.vehicles;
+            }
+            
+            return {
+              ...customer,
+              vehicles: vehicles.length
+            };
+          } catch (err) {
+            console.error(`Error fetching vehicles for customer ${customer.id}:`, err);
+            return customer; // Return original customer if error occurs
+          }
+        })
+      );
+      
+      setCustomers(customersWithVehicleCounts);
     } catch (err: any) {
       console.error("Error fetching customers:", err);
       setError("Failed to load customers. Please try again.");
@@ -94,6 +126,26 @@ export function Customers() {
       // Note: We don't pass password - it would be hashed on the backend
     });
     setIsCustomerDialogOpen(true);
+    
+    // Close details dialog if it's open
+    if (isCustomerDetailsDialogOpen) {
+      setIsCustomerDetailsDialogOpen(false);
+    }
+  };
+
+  const handleViewDetails = (customerId: number) => {
+    setSelectedCustomerId(customerId);
+    setIsCustomerDetailsDialogOpen(true);
+  };
+
+  const handleAddVehicleFromDetails = () => {
+    // Close the details dialog
+    setIsCustomerDetailsDialogOpen(false);
+    
+    // Navigate to the vehicles page with customer filter
+    if (selectedCustomerId) {
+      navigate(`/vehicles/new?customer=${selectedCustomerId}`);
+    }
   };
 
   const handleDeleteCustomer = async (customer: Customer) => {
@@ -119,12 +171,11 @@ export function Customers() {
 
   const handleViewVehicles = async (customerId: number) => {
     try {
-      // Navigate to vehicles page or show vehicles in a dialog
-      toast.info(`Viewing vehicles for customer #${customerId}`);
-      // Future implementation will show vehicles for this customer
+      // Navigate to vehicles page with customer filter
+      navigate(`/vehicles?customer=${customerId}`);
     } catch (err) {
-      console.error("Error fetching vehicles:", err);
-      toast.error("Failed to load vehicles");
+      console.error("Error navigating to vehicles:", err);
+      toast.error("Failed to navigate to vehicles page");
     }
   };
 
@@ -182,7 +233,7 @@ export function Customers() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Customers</h2>
           <p className="text-muted-foreground">
-            Manage your customer data and vehicle relationships
+            Manage customer accounts and vehicle records
           </p>
         </div>
         <Button className="flex items-center gap-2" onClick={handleAddCustomer}>
@@ -202,10 +253,6 @@ export function Customers() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button variant="outline" className="gap-2 h-9 w-full sm:w-auto">
-          <Filter className="h-4 w-4" />
-          Filter
-        </Button>
       </div>
 
       <Card>
@@ -238,7 +285,7 @@ export function Customers() {
           ) : filteredCustomers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               {searchTerm ? (
-                <p>No customers match your search. Try different criteria.</p>
+                <p>No customers match your search criteria. Try different filters.</p>
               ) : (
                 <p>No customers found. Add your first customer to get started.</p>
               )}
@@ -249,64 +296,55 @@ export function Customers() {
                 <table className="w-full min-w-[640px] table-auto">
                   <thead>
                     <tr className="border-b bg-muted/50">
-                      <th className="px-4 py-3 text-left text-sm font-medium">Name</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium">Contact</th>
-                      <th className="px-4 py-3 text-center text-sm font-medium">App Access</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">Customer</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">Username</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">Phone</th>
+                      <th className="px-4 py-3 text-left text-sm font-medium">Address</th>
                       <th className="px-4 py-3 text-center text-sm font-medium">Vehicles</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium">Last Visit</th>
-                      <th className="px-4 py-3 text-center text-sm font-medium">Status</th>
                       <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredCustomers.map((customer) => (
                       <tr key={customer.id} className="border-b hover:bg-muted/50">
-                        <td className="px-4 py-3 text-sm font-medium">
-                          {customer.user && `${customer.user.first_name} ${customer.user.last_name}`.trim() || "N/A"}
+                        <td className="px-4 py-3 text-sm">
+                          <div className="font-medium">{customer.user.first_name} {customer.user.last_name}</div>
+                          <div className="text-xs text-muted-foreground">{customer.user.email}</div>
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          <div>{customer.user?.email || "N/A"}</div>
-                          <div className="text-muted-foreground">{customer.phone || "N/A"}</div>
+                          {customer.user.username}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {customer.phone}
+                        </td>
+                        <td className="px-4 py-3 text-sm">
+                          {customer.address || "—"}
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
-                          {customer.user?.username ? (
-                            <span className="text-xs inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700">
-                              {customer.user.username}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">No access</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-center">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-8 gap-1"
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 min-w-8 rounded-full px-2"
                             onClick={() => handleViewVehicles(customer.id)}
                           >
-                            <Car className="h-3.5 w-3.5" />
+                            <Car className="h-3.5 w-3.5 mr-1" />
                             <span>{customer.vehicles || 0}</span>
                           </Button>
-                        </td>
-                        <td className="px-4 py-3 text-sm">
-                          {customer.last_visit ? new Date(customer.last_visit).toLocaleDateString() : 'N/A'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-center">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              customer.status === "active"
-                                ? "bg-primary/10 text-primary"
-                                : "bg-muted-foreground/20 text-muted-foreground"
-                            }`}
-                          >
-                            {customer.status || "inactive"}
-                          </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-right">
                           <div className="flex justify-end gap-2">
                             <Button 
                               variant="ghost" 
                               size="icon"
+                              title="View Details"
+                              onClick={() => handleViewDetails(customer.id)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              title="Edit Customer"
                               onClick={() => handleEditCustomer(customer)}
                             >
                               <Edit className="h-4 w-4" />
@@ -315,6 +353,7 @@ export function Customers() {
                               variant="ghost" 
                               size="icon"
                               className="text-destructive hover:text-destructive"
+                              title="Delete Customer"
                               onClick={() => handleDeleteCustomer(customer)}
                             >
                               <Trash className="h-4 w-4" />
@@ -339,13 +378,22 @@ export function Customers() {
         onSuccess={fetchCustomers}
       />
 
+      {/* Customer Details Dialog */}
+      <CustomerDetailsDialog
+        open={isCustomerDetailsDialogOpen}
+        onOpenChange={setIsCustomerDetailsDialogOpen}
+        customerId={selectedCustomerId}
+        onEditClick={handleEditCustomer}
+        onAddVehicle={handleAddVehicleFromDetails}
+      />
+
       {/* Delete Confirmation Dialog */}
       <DeleteConfirmationDialog
         open={isDeleteDialogOpen}
         onOpenChange={setIsDeleteDialogOpen}
         onConfirm={confirmDelete}
         title="Delete Customer"
-        description={`Are you sure you want to delete ${customerToDelete?.user ? `${customerToDelete.user.first_name} ${customerToDelete.user.last_name}`.trim() : "this customer"}? This action cannot be undone and will permanently remove the customer record and their associated user account (${customerToDelete?.user?.username || 'N/A'}).`}
+        description={`Are you sure you want to delete ${customerToDelete?.user?.first_name} ${customerToDelete?.user?.last_name}? This action cannot be undone and will also delete the user account.`}
       />
     </div>
   );

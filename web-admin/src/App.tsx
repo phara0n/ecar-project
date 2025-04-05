@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { Vehicles } from './pages/Vehicles';
 import { VehicleServices } from './pages/VehicleServices';
+import { Services } from './pages/Services';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { authService } from './lib/api';
 import { Toaster } from 'sonner';
@@ -112,8 +113,20 @@ function App() {
           }
         />
         
+        {/* Services route */}
+        <Route
+          path="/services"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Services />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
         {/* Placeholder routes for other pages */}
-        {['services', 'appointments', 'invoices', 'settings'].map((path) => (
+        {['appointments', 'invoices', 'settings'].map((path) => (
           <Route
             key={path}
             path={`/${path}`}
