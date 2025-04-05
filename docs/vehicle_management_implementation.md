@@ -24,16 +24,19 @@ This document tracks the implementation progress of the vehicle management funct
 ## Implementation Details
 
 ### Backend API Endpoints
-The vehicle management system will interact with the following API endpoints:
+The vehicle management system interacts with the following API endpoints:
 
-| Endpoint | Method | Description |
+| Frontend Name | Backend Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/vehicles/` | GET | List all vehicles with optional customer_id filter |
-| `/api/vehicles/` | POST | Create a new vehicle |
-| `/api/vehicles/:id/` | GET | Get vehicle details |
-| `/api/vehicles/:id/` | PUT | Update vehicle details |
-| `/api/vehicles/:id/` | DELETE | Delete a vehicle |
-| `/api/vehicles/:id/services/` | GET | Get service history for a vehicle |
+| `getAll` | `/api/cars/` | GET | List all vehicles with optional customer filter |
+| `getById` | `/api/cars/:id/` | GET | Get vehicle details |
+| `getByCustomer` | `/api/cars/?customer=:id` | GET | Get vehicles for a specific customer |
+| `create` | `/api/cars/` | POST | Create a new vehicle |
+| `update` | `/api/cars/:id/` | PUT | Update vehicle details |
+| `delete` | `/api/cars/:id/` | DELETE | Delete a vehicle |
+| `getServices` | `/api/cars/:id/services/` | GET | Get service history for a vehicle |
+
+> **Note**: The frontend uses "vehicles" terminology for consistency, while the backend API uses "cars" endpoints.
 
 ### Data Model
 The vehicle data model includes the following properties:
