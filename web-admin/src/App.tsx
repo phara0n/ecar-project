@@ -4,6 +4,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { Vehicles } from './pages/Vehicles';
+import { VehicleServices } from './pages/VehicleServices';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { authService } from './lib/api';
 import { Toaster } from 'sonner';
@@ -105,12 +106,7 @@ function App() {
           element={
             <RequireAuth>
               <DashboardLayout>
-                <div className="p-6">
-                  <h1 className="text-3xl font-bold">Vehicle Service History</h1>
-                  <p className="text-muted-foreground mt-2">
-                    Service history page is under construction. Check back soon!
-                  </p>
-                </div>
+                <VehicleServices />
               </DashboardLayout>
             </RequireAuth>
           }
