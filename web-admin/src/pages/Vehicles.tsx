@@ -129,11 +129,13 @@ export function Vehicles() {
     try {
       let response;
       
-      if (selectedCustomerId) {
+      if (selectedCustomerId && selectedCustomerId !== "all") {
         // If a customer filter is applied
+        console.log(`Filtering vehicles for customer ID: ${selectedCustomerId}`);
         response = await vehicleService.getByCustomer(parseInt(selectedCustomerId));
       } else {
         // Fetch all vehicles
+        console.log("Fetching all vehicles");
         response = await vehicleService.getAll();
       }
       
@@ -152,6 +154,9 @@ export function Vehicles() {
         // Custom format with vehicles field
         vehiclesData = response.data.vehicles;
       }
+      
+      // Log what we found
+      console.log(`Found ${vehiclesData.length} vehicles`);
       
       // Enrich vehicles with customer names
       const enrichedVehicles = await enrichVehiclesWithCustomerNames(vehiclesData);
@@ -278,23 +283,22 @@ export function Vehicles() {
   };
 
   const handleCustomerFilterChange = (customerId: string) => {
-    // Handle "all" as no filter
+    console.log(`Customer filter changed to: ${customerId}`);
+    
     if (customerId === "all") {
+      // When "All Customers" is selected
+      console.log("Setting to all customers (no filter)");
       setSelectedCustomerId("");
       // Remove customer param if "all" is selected
       searchParams.delete("customer");
       setSearchParams(searchParams);
     } else {
+      // When a specific customer is selected
+      console.log(`Filtering for customer ID: ${customerId}`);
       setSelectedCustomerId(customerId);
       
       // Update URL params
-      if (customerId) {
-        setSearchParams({ customer: customerId });
-      } else {
-        // Remove customer param if no customer is selected
-        searchParams.delete("customer");
-        setSearchParams(searchParams);
-      }
+      setSearchParams({ customer: customerId });
     }
   };
 
@@ -349,7 +353,7 @@ export function Vehicles() {
         
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Select 
-            value={selectedCustomerId || "all"} 
+            value={selectedCustomerId === "" ? "all" : selectedCustomerId} 
             onValueChange={handleCustomerFilterChange}
           >
             <SelectTrigger className="w-full sm:w-[220px]">

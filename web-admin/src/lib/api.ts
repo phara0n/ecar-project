@@ -150,7 +150,10 @@ export const vehicleService = USE_MOCK_API
   : {
     getAll: () => api.get('/cars/'),
     getById: (id: number) => api.get(`/cars/${id}/`),
-    getByCustomer: (customerId: number) => api.get(`/cars/?customer=${customerId}`),
+    getByCustomer: (customerId: number) => {
+      console.log(`Fetching vehicles for customer ID: ${customerId}`);
+      return api.get(`/cars/?customer=${customerId}`);
+    },
     create: (data: any) => {
       // Transform the data to use customer_id instead of customer
       const transformedData = { 
