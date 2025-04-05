@@ -50,7 +50,6 @@ export function Vehicles() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const navigate = useNavigate();
   const params = useParams();
   
@@ -62,14 +61,6 @@ export function Vehicles() {
 
   // Initialize from URL parameters and handle route-based dialog display
   useEffect(() => {
-    const customerId = searchParams.get("customer");
-    if (customerId) {
-      setSelectedCustomerId(customerId);
-    } else {
-      // If no customer ID is specified, set to "all"
-      setSelectedCustomerId("");
-    }
-
     // Check the route parameters to see if we should show a dialog
     if (params.id) {
       if (window.location.pathname.includes('/edit')) {
@@ -83,13 +74,13 @@ export function Vehicles() {
       setSelectedVehicle(undefined);
       setIsVehicleDialogOpen(true);
     }
-  }, [params, window.location.pathname, searchParams]);
+  }, [params, window.location.pathname]);
 
   // Fetch vehicles based on filter
   useEffect(() => {
     fetchVehicles();
     fetchCustomers(); // Get customers for the dropdown filter
-  }, [selectedCustomerId]);
+  }, []);
 
   const fetchVehicleForEdit = async (vehicleId: number) => {
     try {
@@ -127,17 +118,9 @@ export function Vehicles() {
     setError("");
     
     try {
-      let response;
-      
-      if (selectedCustomerId && selectedCustomerId !== "all") {
-        // If a customer filter is applied
-        console.log(`Filtering vehicles for customer ID: ${selectedCustomerId}`);
-        response = await vehicleService.getByCustomer(parseInt(selectedCustomerId));
-      } else {
-        // Fetch all vehicles
-        console.log("Fetching all vehicles");
-        response = await vehicleService.getAll();
-      }
+      // Always fetch all vehicles (removed customer filter logic)
+      console.log("Fetching all vehicles");
+      const response = await vehicleService.getAll();
       
       console.log("API Response:", response.data);
       
@@ -282,26 +265,6 @@ export function Vehicles() {
     }
   };
 
-  const handleCustomerFilterChange = (customerId: string) => {
-    console.log(`Customer filter changed to: ${customerId}`);
-    
-    if (customerId === "all") {
-      // When "All Customers" is selected
-      console.log("Setting to all customers (no filter)");
-      setSelectedCustomerId("");
-      // Remove customer param if "all" is selected
-      searchParams.delete("customer");
-      setSearchParams(searchParams);
-    } else {
-      // When a specific customer is selected
-      console.log(`Filtering for customer ID: ${customerId}`);
-      setSelectedCustomerId(customerId);
-      
-      // Update URL params
-      setSearchParams({ customer: customerId });
-    }
-  };
-
   // Safe filtering function that checks if properties exist before accessing them
   const filteredVehicles = Array.isArray(vehicles) 
     ? vehicles.filter((vehicle) => {
@@ -350,30 +313,6 @@ export function Vehicles() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <Select 
-            value={selectedCustomerId === "" ? "all" : selectedCustomerId} 
-            onValueChange={handleCustomerFilterChange}
-          >
-            <SelectTrigger className="w-full sm:w-[220px]">
-              <SelectValue placeholder="Filter by customer" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Customers</SelectItem>
-              {customers.map(customer => (
-                <SelectItem key={customer.id} value={customer.id.toString()}>
-                  {customer.user.first_name} {customer.user.last_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Button variant="outline" className="gap-2 h-9 w-full sm:w-auto">
-            <Filter className="h-4 w-4" />
-            More Filters
-          </Button>
-        </div>
       </div>
 
       <Card>
@@ -382,9 +321,7 @@ export function Vehicles() {
           <CardDescription>
             {loading 
               ? "Loading vehicles..." 
-              : selectedCustomerId
-                ? `Showing ${filteredVehicles.length} vehicles for selected customer`
-                : `View and manage all ${filteredVehicles.length} vehicles`
+              : `View and manage all ${filteredVehicles.length} vehicles`
             }
           </CardDescription>
         </CardHeader>
@@ -407,7 +344,7 @@ export function Vehicles() {
             </div>
           ) : filteredVehicles.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchTerm || selectedCustomerId ? (
+              {searchTerm ? (
                 <p>No vehicles match your search criteria. Try different filters.</p>
               ) : (
                 <p>No vehicles found. Add your first vehicle to get started.</p>
@@ -516,7 +453,6 @@ export function Vehicles() {
         onOpenChange={handleVehicleDialogClose}
         vehicle={selectedVehicle}
         onSuccess={fetchVehicles}
-        customerId={selectedCustomerId ? parseInt(selectedCustomerId) : undefined}
       />
 
       {/* Delete Confirmation Dialog */}
