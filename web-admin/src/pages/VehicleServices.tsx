@@ -13,7 +13,24 @@ import { format } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ServiceDialog, ServiceFormData } from "@/components/ServiceDialog";
 
-// Interface for service data structure
+// Interface for service data structure from API
+interface ApiService {
+  id: number;
+  car_id: number;
+  scheduled_date: string;
+  title: string;
+  description: string;
+  cost: number;
+  mileage: number;
+  status: string;
+  technician?: string;
+  notes?: string;
+  parts_used?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Interface for service data structure used in our component
 interface Service {
   id: number;
   vehicle: number;
@@ -100,15 +117,32 @@ export function VehicleServices() {
     try {
       const response = await serviceService.getByVehicle(vehicleId);
       
-      let servicesData: Service[] = [];
+      let apiServicesData: ApiService[] = [];
       
       if (Array.isArray(response.data)) {
-        servicesData = response.data;
+        apiServicesData = response.data;
       } else if (response.data && response.data.results && Array.isArray(response.data.results)) {
-        servicesData = response.data.results;
+        apiServicesData = response.data.results;
       } else if (response.data && response.data.services && Array.isArray(response.data.services)) {
-        servicesData = response.data.services;
+        apiServicesData = response.data.services;
       }
+      
+      // Transform API service data to our expected service format
+      const servicesData: Service[] = apiServicesData.map(apiService => ({
+        id: apiService.id,
+        vehicle: apiService.car_id,
+        service_date: apiService.scheduled_date,
+        service_type: apiService.title,
+        description: apiService.description,
+        cost: apiService.cost,
+        mileage: apiService.mileage,
+        status: apiService.status,
+        technician: apiService.technician,
+        notes: apiService.notes,
+        parts_used: apiService.parts_used,
+        created_at: apiService.created_at,
+        updated_at: apiService.updated_at
+      }));
       
       // Sort services by date (newest first)
       servicesData.sort((a, b) => new Date(b.service_date).getTime() - new Date(a.service_date).getTime());
@@ -132,7 +166,7 @@ export function VehicleServices() {
 
   // Handle editing a service record
   const handleEditService = (service: Service) => {
-    // Convert API service object to form data format
+    // Convert service object to form data format
     const serviceFormData: Partial<ServiceFormData> = {
       id: service.id,
       vehicle: service.vehicle,

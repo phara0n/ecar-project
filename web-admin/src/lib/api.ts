@@ -185,9 +185,15 @@ export const vehicleService = USE_MOCK_API
 export const serviceService = {
   getAll: () => api.get('/services/'),
   getById: (id: number) => api.get(`/services/${id}/`),
-  getByVehicle: (vehicleId: number) => api.get(`/services/?vehicle=${vehicleId}`),
-  create: (data: any) => api.post('/services/', data),
-  update: (id: number, data: any) => api.put(`/services/${id}/`, data),
+  getByVehicle: (vehicleId: number) => api.get(`/services/?car_id=${vehicleId}`),
+  create: (data: any) => {
+    console.log('Creating service with data:', JSON.stringify(data, null, 2));
+    return api.post('/services/', data);
+  },
+  update: (id: number, data: any) => {
+    console.log('Updating service', id, 'with data:', JSON.stringify(data, null, 2));
+    return api.patch(`/services/${id}/`, data);
+  },
   delete: (id: number) => api.delete(`/services/${id}/`)
 };
 

@@ -237,12 +237,21 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
     setSubmitting(true);
     
     try {
-      // Prepare data for API
+      // Prepare data for API - transform fields to match API expectations
       const apiData = {
-        ...formData,
-        // Convert Date object to ISO string for API
-        service_date: formData.service_date.toISOString().split('T')[0]
+        car_id: formData.vehicle,
+        title: formData.service_type,
+        scheduled_date: formData.service_date.toISOString().split('T')[0],
+        description: formData.description,
+        cost: formData.cost,
+        mileage: formData.mileage,
+        status: formData.status,
+        technician: formData.technician || '',
+        notes: formData.notes || '',
+        parts_used: formData.parts_used || ''
       };
+      
+      console.log('Submitting service data to API:', apiData);
       
       if (isEditing && service?.id) {
         // Update existing service
@@ -265,9 +274,17 @@ export function ServiceDialog({ open, onOpenChange, vehicleId, service, onSucces
         const serverErrors = err.response.data;
         const formattedErrors: Record<string, string> = {};
         
-        // Format server errors for display
+        // Format server errors for display and map API field names back to form field names
         Object.entries(serverErrors).forEach(([key, value]) => {
-          formattedErrors[key] = Array.isArray(value) ? value[0] : String(value);
+          // Map API field names back to form field names
+          const fieldMapping: Record<string, string> = {
+            'car_id': 'vehicle',
+            'title': 'service_type',
+            'scheduled_date': 'service_date'
+          };
+          
+          const formField = fieldMapping[key] || key;
+          formattedErrors[formField] = Array.isArray(value) ? value[0] : String(value);
         });
         
         setErrors(formattedErrors);
