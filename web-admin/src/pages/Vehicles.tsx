@@ -288,7 +288,7 @@ export function Vehicles() {
     : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full max-w-none">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Vehicles</h2>
@@ -315,8 +315,8 @@ export function Vehicles() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="w-full max-w-none">
+        <CardHeader className="px-6">
           <CardTitle>Vehicle List</CardTitle>
           <CardDescription>
             {loading 
@@ -325,7 +325,7 @@ export function Vehicles() {
             }
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-6">
           {loading ? (
             <div className="flex justify-center items-center py-8">
               <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full"></div>
@@ -351,9 +351,9 @@ export function Vehicles() {
               )}
             </div>
           ) : (
-            <div className="rounded-md border">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] table-auto">
+            <div className="rounded-md border w-full">
+              <div className="overflow-x-auto w-full">
+                <table className="w-full table-auto">
                   <thead>
                     <tr className="border-b bg-muted/50">
                       <th className="px-4 py-3 text-left text-sm font-medium">Vehicle</th>
