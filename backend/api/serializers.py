@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from drf_yasg.utils import swagger_serializer_method
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
 
 # Standard serializers
 class UserSerializer(serializers.ModelSerializer):
@@ -52,7 +53,7 @@ class CarSerializer(serializers.ModelSerializer):
     class Meta:
         model = Car
         fields = ['id', 'customer', 'customer_id', 'make', 'model', 'year', 'license_plate', 
-                 'vin', 'fuel_type', 'mileage', 'average_daily_mileage', 'last_service_date', 
+                 'vin', 'fuel_type', 'initial_mileage', 'mileage', 'average_daily_mileage', 'last_service_date', 
                  'last_service_mileage', 'next_service_date', 'next_service_mileage', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'average_daily_mileage', 
                            'next_service_date', 'next_service_mileage']
@@ -73,6 +74,10 @@ class CarSerializer(serializers.ModelSerializer):
         if self.instance and request and not request.user.is_superuser:
             # Make mileage read-only
             self.fields['mileage'].read_only = True
+            
+        # Initial mileage should always be read-only for non-superusers
+        if request and not request.user.is_superuser:
+            self.fields['initial_mileage'].read_only = True
 
 class ServiceItemSerializer(serializers.ModelSerializer):
     service_id = serializers.PrimaryKeyRelatedField(
@@ -152,13 +157,15 @@ class ServiceSerializer(serializers.ModelSerializer):
         required=False
     )
     service_type = ServiceIntervalSerializer(read_only=True)
+    car_details = CarSerializer(source='car', read_only=True)
+    service_type_details = ServiceIntervalSerializer(source='service_type', read_only=True)
     
     class Meta:
         model = Service
-        fields = ['id', 'car', 'car_id', 'title', 'description', 'status', 
+        fields = ['id', 'car', 'car_details', 'title', 'description', 'status', 
                  'scheduled_date', 'completed_date', 'technician_notes', 
                  'service_mileage', 'service_type', 'service_type_id', 'is_routine_maintenance',
-                 'service_items', 'created_at', 'updated_at']
+                 'service_items', 'created_at', 'updated_at', 'service_type_details']
         read_only_fields = ['id', 'created_at', 'updated_at']
         ref_name = 'ServiceFull'
 
@@ -201,49 +208,37 @@ class ServiceSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
         
     def update(self, instance, validated_data):
-        """
-        When updating a service to 'completed' status, update the car's mileage if needed
-        and create service history record if it's routine maintenance.
-        """
-        old_status = instance.status
-        new_status = validated_data.get('status', old_status)
+        import logging
+        logger = logging.getLogger(__name__)
         
-        # If changing to 'completed' status
-        if old_status != 'completed' and new_status == 'completed':
-            service_mileage = validated_data.get('service_mileage', instance.service_mileage)
-            
-            # If service mileage is set and is greater than the car's mileage, update the car
-            if service_mileage and service_mileage > instance.car.mileage:
-                instance.car.mileage = service_mileage
-                instance.car.save(update_fields=['mileage'])
-                
-        # Call parent implementation
-        service = super().update(instance, validated_data)
+        # Check for status change to completed
+        is_being_completed = (
+            validated_data.get('status') == 'completed' and 
+            instance.status != 'completed'
+        )
         
-        # If service is now completed and routine maintenance is enabled,
-        # make sure service history and predictions are updated
-        if service.status == 'completed' and service.is_routine_maintenance:
-            # Service history will be created in the model's save method
-            if service.service_type and not hasattr(service, 'service_history_record'):
-                from core.models import ServiceHistory
-                try:
-                    service_history = ServiceHistory.objects.create(
-                        car=service.car,
-                        service=service,
-                        service_interval=service.service_type,
-                        service_date=service.completed_date.date(),
-                        service_mileage=service.service_mileage
-                    )
-                except Exception as e:
-                    # Log error but don't fail the update
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Error creating service history: {str(e)}")
+        # Get service mileage from validated data or use the existing value
+        service_mileage = validated_data.get('service_mileage', instance.service_mileage)
+        
+        # Set completed date if not provided when marking as completed
+        if is_being_completed and not validated_data.get('completed_date'):
+            validated_data['completed_date'] = timezone.now()
+            logger.info(f"Setting completed_date for service {instance.id}")
             
-            # Update service predictions for the car
-            service.car.update_service_predictions()
-                
-        return service
+        # Update the instance with all validated data
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Always update the car's mileage if service_mileage is provided and greater than car's current mileage
+        if service_mileage and instance.car.mileage < service_mileage:
+            logger.info(f"Updating car mileage from {instance.car.mileage} to {service_mileage}")
+            instance.car.mileage = service_mileage
+            instance.car.save(update_fields=['mileage'])
+        
+        # Save the instance
+        instance.save()
+        
+        return instance
 
 class InvoiceSerializer(serializers.ModelSerializer):
     service_id = serializers.PrimaryKeyRelatedField(
@@ -417,10 +412,9 @@ class MileageUpdateSerializer(serializers.ModelSerializer):
         """Create a mileage update and recalculate service predictions"""
         mileage_update = super().create(validated_data)
         
-        # Update car predictions if mileage changed
+        # Always update car predictions when a new mileage update is created
         car = mileage_update.car
-        if car.mileage == mileage_update.mileage:
-            car.update_service_predictions()
+        car.update_service_predictions()
             
         return mileage_update
 

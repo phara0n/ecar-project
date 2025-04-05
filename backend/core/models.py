@@ -9,7 +9,11 @@ import datetime
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone
+import logging
+from datetime import timedelta
+from django.conf import settings
 
+User = settings.AUTH_USER_MODEL
 
 def validate_license_plate(value):
     """
@@ -71,7 +75,8 @@ class Car(models.Model):
     license_plate = models.CharField(_('License Plate'), max_length=20, unique=True, validators=[validate_license_plate])
     vin = models.CharField(_('VIN'), max_length=17, blank=True, null=True)
     fuel_type = models.CharField(_('Fuel Type'), max_length=10, choices=FUEL_CHOICES, default='gasoline')
-    mileage = models.PositiveIntegerField(_('Mileage'), default=0)
+    initial_mileage = models.PositiveIntegerField(_('Initial Mileage'), default=0, help_text=_('Starting mileage when car was added to the system. Cannot be changed except by superadmin.'))
+    mileage = models.PositiveIntegerField(_('Current Mileage'), default=0)
     # New fields for service prediction
     average_daily_mileage = models.FloatField(_('Average Daily Mileage (km)'), blank=True, null=True)
     last_service_date = models.DateField(_('Last Service Date'), blank=True, null=True)
@@ -88,7 +93,11 @@ class Car(models.Model):
         """
         Calculate when the next service is due based on mileage updates, service history and service intervals.
         Returns tuple of (next_service_date, next_service_mileage).
+        
+        If insufficient mileage data is available, calculation will be based only on time (365 days).
         """
+        logger = logging.getLogger(__name__)
+        
         # Find applicable service intervals for this car
         service_intervals = ServiceInterval.objects.filter(
             Q(car_make=self.make, car_model=self.model) | 
@@ -98,135 +107,488 @@ class Car(models.Model):
         ).order_by('-car_make', '-car_model')
         
         if not service_intervals.exists():
-            return None, None
+            # If no service intervals found, provide a basic fallback prediction
+            # based on specified interval (10,000 km or 365 days)
+            logger.warning(f"No service intervals found for car {self.id}. Using fallback prediction.")
+            return self._generate_fallback_prediction()
             
         # Use the most specific applicable interval
         service_interval = service_intervals.first()
+        logger.info(f"Car {self.id}: Using service interval '{service_interval.name}' with mileage interval {service_interval.mileage_interval} km")
         
-        # Get recent mileage updates to calculate average usage
-        mileage_updates = list(MileageUpdate.objects.filter(car=self).order_by('-reported_date')[:10])
+        # Calculate average daily mileage using available data
+        daily_mileage_rate = self._calculate_average_daily_mileage()
         
-        if len(mileage_updates) < 2:
-            # Not enough data for prediction based on mileage updates
-            # Check if we have service history to use instead
-            service_history = list(ServiceHistory.objects.filter(car=self).order_by('-service_date')[:5])
-            if len(service_history) < 2:
-                # Not enough service history either
-                return None, None
-                
-            # Calculate daily mileage rate from service history
-            oldest_service = service_history[-1]
-            newest_service = service_history[0]
-            days_difference = (newest_service.service_date - oldest_service.service_date).days
-            if days_difference < 1:
-                days_difference = 1  # Avoid division by zero
-                
-            mileage_difference = newest_service.service_mileage - oldest_service.service_mileage
-            daily_mileage_rate = mileage_difference / days_difference
-        else:
-            # Calculate daily mileage rate from mileage updates
-            oldest_update = mileage_updates[-1]
-            newest_update = mileage_updates[0]
-            days_difference = (newest_update.reported_date - oldest_update.reported_date).days
-            
-            if days_difference < 1:
-                days_difference = 1  # Avoid division by zero
-                
-            mileage_difference = newest_update.mileage - oldest_update.mileage
-            daily_mileage_rate = mileage_difference / days_difference
+        # BUGFIX: Get the highest service mileage from service history
+        from django.db.models import Max
+        highest_service_mileage = ServiceHistory.objects.filter(car=self).aggregate(Max('service_mileage'))['service_mileage__max']
         
-        # Update car's average daily mileage
-        self.average_daily_mileage = daily_mileage_rate
+        if highest_service_mileage:
+            logger.info(f"Car {self.id}: Highest service mileage found: {highest_service_mileage} km")
+        
+        # Get all service history records for this car, ordered by date (newest first) and mileage (highest first)
+        all_service_history = ServiceHistory.objects.filter(car=self).order_by('-service_date', '-service_mileage')
+        
+        # Always get the newest service history record with the highest mileage
+        newest_service_history = all_service_history.first()
+        
+        # Debug log the service history records
+        if newest_service_history:
+            logger.info(f"Car {self.id}: Found newest service history with mileage {newest_service_history.service_mileage} on {newest_service_history.service_date}")
         
         # Check if we have service history for this specific interval type
         matching_service_history = ServiceHistory.objects.filter(
             car=self,
             service_interval=service_interval
-        ).order_by('-service_date').first()
+        ).order_by('-service_date', '-service_mileage').first()
+        
+        if matching_service_history:
+            logger.info(f"Car {self.id}: Found matching service history with mileage {matching_service_history.service_mileage} on {matching_service_history.service_date}")
         
         next_service_date = None
         next_service_mileage = None
         
-        # Calculate next service based on the most recent matching service
+        # FIRST PRIORITY: Use the highest service mileage + interval if available
+        if highest_service_mileage and service_interval.mileage_interval:
+            next_service_mileage = highest_service_mileage + service_interval.mileage_interval
+            logger.info(f"Car {self.id}: Setting next service mileage to {next_service_mileage} (highest service mileage {highest_service_mileage} + interval {service_interval.mileage_interval})")
+        
+        # Calculate the next service date based on the most appropriate service history
         if matching_service_history:
-            if service_interval.mileage_interval:
-                next_service_mileage = matching_service_history.service_mileage + service_interval.mileage_interval
-                
+            # Always calculate the time-based date
             if service_interval.time_interval_days:
-                time_based_date = matching_service_history.service_date + datetime.timedelta(days=service_interval.time_interval_days)
-                next_service_date = time_based_date
+                time_interval = service_interval.time_interval_days or 365  # Default to 365 if not set
+                next_service_date = matching_service_history.service_date + datetime.timedelta(days=time_interval)
+            else:
+                # If no time interval in service_interval, use the default 365 days
+                next_service_date = matching_service_history.service_date + datetime.timedelta(days=365)
+        
+        # If no matching service interval record, but we have any service history, use the newest one with highest mileage
+        elif newest_service_history:
+            # Always calculate the time-based date
+            if service_interval.time_interval_days:
+                time_interval = service_interval.time_interval_days or 365  # Default to 365 if not set
+                next_service_date = newest_service_history.service_date + datetime.timedelta(days=time_interval)
+            else:
+                # If no time interval in service_interval, use the default 365 days
+                next_service_date = newest_service_history.service_date + datetime.timedelta(days=365)
+        
+        # If no service history at all, fall back to last_service data or current data
         else:
-            # Fall back to last_service data or current data
-            # Calculate next service based on mileage interval
-            if service_interval.mileage_interval:
-                # If car has service history, use last service as base
+            # Always calculate the time-based date
+            if self.last_service_date:
+                # Use service interval's time interval or default to 365 days
+                time_interval = service_interval.time_interval_days or 365
+                next_service_date = self.last_service_date + datetime.timedelta(days=time_interval)
+            else:
+                # If no last service date, use current date + interval
+                time_interval = service_interval.time_interval_days or 365
+                next_service_date = timezone.now().date() + datetime.timedelta(days=time_interval)
+            
+            # Calculate mileage-based threshold if we don't already have it
+            if next_service_mileage is None and service_interval.mileage_interval:
                 if self.last_service_mileage:
                     next_service_mileage = self.last_service_mileage + service_interval.mileage_interval
+                    logger.info(f"Car {self.id}: Calculated next service mileage {next_service_mileage} from last service mileage {self.last_service_mileage}")
                 else:
                     # Otherwise use current mileage as base
                     next_service_mileage = self.mileage + service_interval.mileage_interval
-                    
-            # Calculate next service based on time interval
-            if service_interval.time_interval_days:
-                if self.last_service_date:
-                    time_based_date = self.last_service_date + datetime.timedelta(days=service_interval.time_interval_days)
-                else:
-                    time_based_date = timezone.now().date() + datetime.timedelta(days=service_interval.time_interval_days)
-                    
-                next_service_date = time_based_date
+                    logger.info(f"Car {self.id}: Calculated next service mileage {next_service_mileage} from current mileage {self.mileage}")
         
-        # For combined interval types, make the calculation work as expected
-        if service_interval.interval_type == 'both' and service_interval.mileage_interval and service_interval.time_interval_days:
-            # Calculate mileage-based date if we have a next_service_mileage but no next_service_date
-            if next_service_mileage and not next_service_date:
-                mileage_remaining = next_service_mileage - self.mileage
-                days_until_service = mileage_remaining / daily_mileage_rate if daily_mileage_rate > 0 else 365
-                mileage_based_date = timezone.now().date() + datetime.timedelta(days=days_until_service)
-                next_service_date = mileage_based_date
-                
-            # Calculate time-based mileage if we have a next_service_date but no next_service_mileage
-            elif next_service_date and not next_service_mileage:
-                days_until_time_service = (next_service_date - timezone.now().date()).days
-                next_service_mileage = self.mileage + (daily_mileage_rate * max(days_until_time_service, 0))
-                
-            # If we have both, determine which comes first (time or mileage)
-            elif next_service_date and next_service_mileage:
-                # Calculate when the car will reach the mileage threshold
-                mileage_remaining = next_service_mileage - self.mileage
-                days_until_mileage_service = mileage_remaining / daily_mileage_rate if daily_mileage_rate > 0 else 365
-                mileage_based_date = timezone.now().date() + datetime.timedelta(days=days_until_mileage_service)
-                
-                # Use the earlier of the two dates
-                if mileage_based_date < next_service_date:
-                    next_service_date = mileage_based_date
-                else:
-                    # If time-based service comes first, recalculate the expected mileage
-                    days_until_time_service = (next_service_date - timezone.now().date()).days
-                    next_service_mileage = self.mileage + (daily_mileage_rate * max(days_until_time_service, 0))
-        elif service_interval.interval_type == 'mileage' and next_service_mileage:
-            # For mileage-only intervals, calculate the expected date
+        # Estimate when car will reach the mileage threshold
+        if next_service_mileage:
+            # Estimate date when car will reach mileage threshold
             mileage_remaining = next_service_mileage - self.mileage
-            days_until_service = mileage_remaining / daily_mileage_rate if daily_mileage_rate > 0 else 365
-            next_service_date = timezone.now().date() + datetime.timedelta(days=days_until_service)
-        elif service_interval.interval_type == 'time' and next_service_date:
-            # For time-only intervals, calculate the expected mileage
+            # Use a very large number of days if daily_mileage_rate is zero to prioritize time-based date
+            days_until_mileage_service = mileage_remaining / daily_mileage_rate if daily_mileage_rate > 0 else 9999
+            mileage_based_date = timezone.now().date() + datetime.timedelta(days=days_until_mileage_service)
+            
+            # Log the mileage-based date calculation
+            logger.info(f"Car {self.id}: Mileage remaining: {mileage_remaining}, Days until mileage service: {days_until_mileage_service}, Mileage-based date: {mileage_based_date}")
+            
+            # For interval_type = 'both' or 'mileage', use the earlier of the two dates
+            if service_interval.interval_type in ('both', 'mileage'):
+                if not next_service_date or mileage_based_date < next_service_date:
+                    logger.info(f"Car {self.id}: Using mileage-based date {mileage_based_date} as it's earlier than time-based date {next_service_date}")
+                    next_service_date = mileage_based_date
+        
+        # If we only have a date but no mileage (unlikely with our logic), estimate the mileage
+        if next_service_date and not next_service_mileage:
             days_until_service = (next_service_date - timezone.now().date()).days
             next_service_mileage = self.mileage + (daily_mileage_rate * max(days_until_service, 0))
+            logger.info(f"Car {self.id}: Estimated next service mileage {next_service_mileage} based on next service date {next_service_date}")
         
+        # Round the mileage to an integer
         if next_service_mileage:
             next_service_mileage = int(next_service_mileage)
+            
+        # If both values are somehow still None, use fallback
+        if next_service_date is None or next_service_mileage is None:
+            logger.warning(f"Car {self.id}: Next service date or mileage is None, using fallback prediction")
+            return self._generate_fallback_prediction()
+            
+        # Log the final prediction details for debugging
+        logger.info(f"Car {self.id}: Final next service date {next_service_date}, mileage {next_service_mileage}")
+        
+        return next_service_date, next_service_mileage
+    
+    def _calculate_average_daily_mileage(self):
+        """
+        Calculate the average daily mileage using available data.
+        Uses initial mileage when car was created as first data point if needed.
+        Handles same-day activity (services and mileage updates) by accumulating the total mileage changes.
+        
+        Returns:
+            float: The calculated daily mileage rate
+        """
+        logger = logging.getLogger(__name__)
+        
+        # Get initial reference points
+        car_creation_date = self.created_at.date()
+        days_since_creation = max(1, (timezone.now().date() - car_creation_date).days)
+        initial_car_mileage = self.initial_mileage  # Use the initial_mileage field instead of assuming 0
+        
+        # Default daily mileage (if we can't calculate)
+        default_daily_mileage = 50.0
+        
+        logger.info(f"Car {self.id}: Starting mileage calculation. Days since creation: {days_since_creation}, current mileage: {self.mileage}, initial mileage: {initial_car_mileage}")
+        
+        # First check if we have any data for today (same-day activities)
+        today = timezone.now().date()
+        
+        # Check if this is a new car (created today) with mileage activity
+        if car_creation_date == today:
+            # Calculate the difference between current and initial mileage
+            mileage_difference = self.mileage - initial_car_mileage
+            
+            # If there is significant mileage difference despite being a new car (>500 km driven since creation)
+            if mileage_difference > 500:
+                # Use mileage difference as basis for calculation - assume accumulated over at least a week
+                adjusted_mileage = mileage_difference / 7
+                logger.info(f"Car {self.id}: New car with significant mileage difference ({mileage_difference} km). Using adjusted rate: {adjusted_mileage} km/day")
+                return adjusted_mileage
+                
+            # If the car itself has significant mileage (>500) but the difference is small,
+            # this is likely a pre-owned vehicle that was just added to the system
+            elif self.mileage > 500 and mileage_difference <= 500:
+                # Use the actual mileage difference as daily rate if it's non-zero,
+                # otherwise use the default rate of 50 km/day
+                if mileage_difference > 0:
+                    logger.info(f"Car {self.id}: Pre-owned car with small mileage difference ({mileage_difference} km). Using that as daily rate.")
+                    return mileage_difference
+                else:
+                    logger.info(f"Car {self.id}: Pre-owned car with no mileage difference. Using default {default_daily_mileage} km/day")
+                    return default_daily_mileage
+            
+            # If the car was created today and all activity is on the same day,
+            # and doesn't have significant mileage difference, we use the default value
+            logger.info(f"Car {self.id}: All activity is on car creation day with minimal mileage change. Using default mileage of {default_daily_mileage} km/day")
+            return default_daily_mileage
+        
+        # Get all available data first to avoid repeated database queries
+        all_mileage_updates = list(MileageUpdate.objects.filter(car=self).order_by('-reported_date'))
+        all_service_history = list(ServiceHistory.objects.filter(car=self).order_by('-service_date'))
+        
+        # Log counts of available data for debugging
+        logger.info(f"Car {self.id}: Found {len(all_mileage_updates)} mileage updates and {len(all_service_history)} service history records")
+        
+        # Quick check: If no history data at all, return default immediately
+        if not all_mileage_updates and not all_service_history:
+            logger.info(f"Car {self.id}: No mileage updates or service history found. Using default {default_daily_mileage} km/day")
+            return default_daily_mileage
+            
+        # Special case: If the car was created recently (within 7 days), we have service history but no mileage updates,
+        # and all services occurred on the same day as creation, use the default value
+        if days_since_creation <= 7 and len(all_mileage_updates) == 0 and len(all_service_history) > 0:
+            # Check if all services were on the creation date
+            all_services_on_creation_date = all(sh.service_date == car_creation_date for sh in all_service_history)
+            if all_services_on_creation_date:
+                logger.info(f"Car {self.id}: New car with only same-day service history and no mileage updates. Using default {default_daily_mileage} km/day")
+                return default_daily_mileage
+        
+        # Check for same-day mileage updates and service history
+        same_day_mileage_updates = [mu for mu in all_mileage_updates if mu.reported_date.date() == today]
+        same_day_services = [sh for sh in all_service_history if sh.service_date == today]
+        
+        # Special handling for same-day activities
+        if same_day_mileage_updates or same_day_services:
+            # Start with today's activities
+            all_events = []
+            
+            # Add service history events
+            for sh in same_day_services:
+                all_events.append((sh.service_date, sh.service_mileage, 'service'))
+                
+            # Add mileage update events
+            for mu in same_day_mileage_updates:
+                all_events.append((mu.reported_date.date(), mu.mileage, 'update'))
+                
+            # Sort events by mileage (ascending)
+            all_events.sort(key=lambda x: x[1])
+            
+            if len(all_events) >= 2:
+                # Calculate total mileage change across all same-day events
+                min_mileage = all_events[0][1]
+                max_mileage = all_events[-1][1]
+                
+                # Get the day's total mileage change
+                same_day_mileage_change = max_mileage - min_mileage
+                
+                # If this is the only day with data, use it directly
+                if (today - car_creation_date).days <= 1:
+                    # This is effective a 1-day rate
+                    logger.info(f"Car {self.id}: Calculated daily mileage {same_day_mileage_change} from same-day events")
+                    return same_day_mileage_change
+                
+                # Otherwise, use this as a supplemental data point with other historical data
+                logger.info(f"Car {self.id}: Same-day mileage change detected: {same_day_mileage_change} km")
+                
+        # If this is a new car but has significant mileage, calculate based on the mileage
+        if days_since_creation <= 7 and self.mileage > 500:
+            # Adjust mileage to a reasonable daily rate
+            # Assume this was accumulated over 7 days
+            adjusted_rate = min(200, self.mileage / 7)
+            logger.info(f"Car {self.id}: New car with significant mileage ({self.mileage}). Using adjusted rate: {adjusted_rate} km/day")
+            return adjusted_rate
+        
+        # ===== Combined Events Approach =====
+        # If we have both mileage updates and service history, combine them to improve accuracy
+        combined_events = []
+        
+        # Always add car initial mileage as a starting point to ensure we have data
+        combined_events.append((car_creation_date, initial_car_mileage, 'creation'))
+        
+        # Add service history events first to prioritize them
+        for sh in all_service_history:
+            combined_events.append((sh.service_date, sh.service_mileage, 'service'))
+            
+        # Add mileage update events
+        for mu in all_mileage_updates:
+            combined_events.append((mu.reported_date.date(), mu.mileage, 'update'))
+        
+        # If we have current mileage that's different, add it as a data point
+        if self.mileage > 0 and self.mileage != initial_car_mileage:
+            current_date = timezone.now().date()
+            # Avoid duplicating the same mileage if it's already in our events
+            if not any(event[0] == current_date and event[1] == self.mileage for event in combined_events):
+                combined_events.append((current_date, self.mileage, 'current'))
+                logger.info(f"Car {self.id}: Added current mileage {self.mileage} as a data point")
+            
+        # Sort by date (newest first) then by mileage (highest first)
+        combined_events.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        
+        logger.info(f"Car {self.id}: Built {len(combined_events)} combined events for mileage calculation")
+        
+        # If we have at least two events, calculate based on the newest and oldest
+        if len(combined_events) >= 2:
+            newest_event = combined_events[0]
+            oldest_event = combined_events[-1]
+            
+            newest_date, newest_mileage, newest_type = newest_event
+            oldest_date, oldest_mileage, oldest_type = oldest_event
+            
+            # Special case: If oldest is creation and newest is same-day service with no mileage updates
+            if oldest_type == 'creation' and newest_type == 'service' and newest_date == car_creation_date and len(all_mileage_updates) == 0:
+                if newest_mileage > 500:
+                    # The car already has significant mileage, use an adjusted rate
+                    adjusted_rate = min(200, newest_mileage / 7)
+                    logger.info(f"Car {self.id}: New car with significant service mileage ({newest_mileage}). Using adjusted rate: {adjusted_rate} km/day")
+                    return adjusted_rate
+                else:
+                    logger.info(f"Car {self.id}: Only have creation and same-day service. Using default {default_daily_mileage} km/day")
+                    return default_daily_mileage
+            
+            days_difference = max(1, (newest_date - oldest_date).days)  # Ensure at least 1 day to prevent division by zero
+            
+            mileage_difference = newest_mileage - oldest_mileage
+            daily_rate = mileage_difference / days_difference
+            logger.info(f"Car {self.id}: Calculated daily mileage {daily_rate} from mixed events ({newest_type} and {oldest_type}), over {days_difference} days")
+            
+            # Don't allow extremely high values from same-day calculations with large mileage gaps
+            if days_difference == 1 and mileage_difference > 1000:
+                # Cap the daily rate at either 1000 or the current calculated rate divided by a reasonable factor
+                capped_rate = min(1000, daily_rate / 10)
+                logger.warning(f"Car {self.id}: Capping unusually high daily rate {daily_rate} to {capped_rate}")
+                return capped_rate
+                
+            return daily_rate
+        
+        # ===== Service History Only Approach =====
+        # If combined approach didn't work, try using only service history
+        if all_service_history:
+            newest_service = all_service_history[0]
+            newest_mileage = newest_service.service_mileage
+            newest_date = newest_service.service_date
+            
+            logger.info(f"Car {self.id}: Falling back to service history only approach with {len(all_service_history)} records")
+            
+            # Special case: If we only have service history and it's on the same day as creation
+            if newest_date == car_creation_date and len(all_service_history) == 1:
+                logger.info(f"Car {self.id}: Only have service history from creation date. Using default {default_daily_mileage} km/day")
+                return default_daily_mileage
+            
+            # If we have multiple service history records, use the oldest one as start point
+            if len(all_service_history) > 1:
+                oldest_service = all_service_history[-1]
+                oldest_mileage = oldest_service.service_mileage
+                oldest_date = oldest_service.service_date
+                
+                # If all services are on the same day as creation, use default
+                if oldest_date == car_creation_date and newest_date == car_creation_date:
+                    logger.info(f"Car {self.id}: Multiple services all on creation date. Using default {default_daily_mileage} km/day")
+                    return default_daily_mileage
+                
+                days_difference = max(1, (newest_date - oldest_date).days)  # Ensure at least 1 day
+                mileage_difference = newest_mileage - oldest_mileage
+                daily_rate = mileage_difference / days_difference
+                logger.info(f"Car {self.id}: Calculated daily mileage {daily_rate} from {len(all_service_history)} service history records over {days_difference} days")
+                return daily_rate
+            
+            # If we have only one service history, compare with car creation date
+            days_difference = max(7, (newest_date - car_creation_date).days)  # Use at least 7 days to avoid unrealistic rates
+            mileage_difference = newest_mileage - initial_car_mileage
+            # Cap the daily rate to reasonable values based on the time span
+            if days_difference <= 7:
+                daily_rate = min(200, mileage_difference / days_difference)
+                logger.info(f"Car {self.id}: Calculated capped daily mileage {daily_rate} from initial to service history over {days_difference} days")
+            else:
+                daily_rate = mileage_difference / days_difference
+                logger.info(f"Car {self.id}: Calculated daily mileage {daily_rate} from initial to service history over {days_difference} days")
+            return daily_rate
+        
+        # ===== Mileage Updates Only Approach =====
+        # If service history approach didn't work, try using only mileage updates
+        if all_mileage_updates:
+            newest_update = all_mileage_updates[0]
+            newest_mileage = newest_update.mileage
+            newest_date = newest_update.reported_date.date()
+            
+            logger.info(f"Car {self.id}: Falling back to mileage updates only approach with {len(all_mileage_updates)} updates")
+            
+            # Special case: If we only have mileage updates and it's on the same day as creation
+            if newest_date == car_creation_date and len(all_mileage_updates) == 1:
+                logger.info(f"Car {self.id}: Only have mileage updates from creation date. Using default {default_daily_mileage} km/day")
+                return default_daily_mileage
+            
+            # If we have multiple updates, use the oldest one as start point
+            if len(all_mileage_updates) > 1:
+                oldest_update = all_mileage_updates[-1]
+                oldest_mileage = oldest_update.mileage
+                oldest_date = oldest_update.reported_date.date()
+                
+                # If all updates are on the same day as creation, use default
+                if oldest_date == car_creation_date and newest_date == car_creation_date:
+                    logger.info(f"Car {self.id}: Multiple updates all on creation date. Using default {default_daily_mileage} km/day")
+                    return default_daily_mileage
+                
+                days_difference = max(1, (newest_date - oldest_date).days)  # Ensure at least 1 day
+                mileage_difference = newest_mileage - oldest_mileage
+                daily_rate = mileage_difference / days_difference
+                logger.info(f"Car {self.id}: Calculated daily mileage {daily_rate} from {len(all_mileage_updates)} mileage updates over {days_difference} days")
+                return daily_rate
+            
+            # If we have only one mileage update, compare with car creation
+            days_difference = max(7, (newest_date - car_creation_date).days)  # Use at least 7 days
+            mileage_difference = newest_mileage - initial_car_mileage
+            # Cap the daily rate to reasonable values based on the time span
+            if days_difference <= 7:
+                daily_rate = min(200, mileage_difference / days_difference)
+                logger.info(f"Car {self.id}: Calculated capped daily mileage {daily_rate} from initial to update over {days_difference} days")
+            else:
+                daily_rate = mileage_difference / days_difference
+                logger.info(f"Car {self.id}: Calculated daily mileage {daily_rate} from initial to update over {days_difference} days")
+            return daily_rate
+        
+        # ===== Current Mileage Based Approach =====
+        # If current mileage differs significantly from what would be predicted, use that
+        if self.mileage > 0:
+            # Special case: If the car is new (created within 7 days)
+            if days_since_creation <= 7:
+                logger.info(f"Car {self.id}: New car with current mileage {self.mileage}. Using default {default_daily_mileage} km/day")
+                return default_daily_mileage
+            
+            # Calculate based on current mileage with minimum days
+            adjusted_rate = self.mileage / days_since_creation
+            logger.info(f"Car {self.id}: Calculated daily mileage {adjusted_rate} based on current mileage over {days_since_creation} days")
+            return adjusted_rate
+        
+        # ===== Fallback Approaches =====
+        # If we don't have enough data for a proper calculation, use the stored average or default
+        if self.average_daily_mileage:
+            logger.info(f"Car {self.id}: Using previously stored average daily mileage: {self.average_daily_mileage}")
+            return self.average_daily_mileage
+            
+        # If all fails, use a reasonable default
+        logger.warning(f"Car {self.id}: No data to calculate daily mileage, using default {default_daily_mileage}")
+        return default_daily_mileage
+
+    def _generate_fallback_prediction(self):
+        """Generate a fallback prediction when insufficient data is available"""
+        # Use 10,000 km interval and 365 days (1 year) as specified
+        default_mileage_interval = 10000
+        default_time_interval = 365
+        
+        # Estimate daily mileage if not set (50 km/day is a reasonable default)
+        daily_mileage = self.average_daily_mileage or 50.0
+        
+        # Set next service date based on last service or current date (always calculate this)
+        if self.last_service_date:
+            next_service_date = self.last_service_date + timedelta(days=default_time_interval)
+        else:
+            next_service_date = timezone.now().date() + timedelta(days=default_time_interval)
+            
+        # Set next service mileage based on last service or current mileage
+        if self.last_service_mileage:
+            next_service_mileage = self.last_service_mileage + default_mileage_interval
+        else:
+            next_service_mileage = self.mileage + default_mileage_interval
             
         return next_service_date, next_service_mileage
 
     def update_service_predictions(self):
         """Update the service predictions for this car and save them to the model"""
+        # First update the average daily mileage
+        self.average_daily_mileage = self._calculate_average_daily_mileage()
+        
+        # Ensure we have a value for average_daily_mileage (fallback to default if None)
+        if self.average_daily_mileage is None:
+            self.average_daily_mileage = 50.0
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Car {self.id}: No average daily mileage calculated, using default 50.0 km/day")
+        
+        # Then calculate next service date
         next_date, next_mileage = self.calculate_next_service_date()
+        
         if next_date and next_mileage:
             self.next_service_date = next_date
             self.next_service_mileage = next_mileage
             self.save(update_fields=['next_service_date', 'next_service_mileage', 'average_daily_mileage'])
             return True
         return False
+
+    def save(self, *args, **kwargs):
+        """
+        Ensure initial_mileage is set when a car is first created.
+        The initial_mileage value is immutable after creation except by superadmins.
+        """
+        is_new = self.pk is None
+        
+        # If this is a new car, set initial_mileage to the same as current mileage
+        if is_new and self.initial_mileage == 0 and self.mileage > 0:
+            self.initial_mileage = self.mileage
+        elif not is_new and 'update_fields' in kwargs and 'initial_mileage' in kwargs['update_fields']:
+            # Allow explicit updates to initial_mileage via update_fields parameter (used by admin)
+            pass
+        elif not is_new:
+            # For existing cars, retrieve the current initial_mileage to preserve it
+            try:
+                current_car = Car.objects.get(pk=self.pk)
+                self.initial_mileage = current_car.initial_mileage
+            except Car.DoesNotExist:
+                # This is a safeguard - should not happen in normal operation
+                pass
+            
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = _('Car')
@@ -344,23 +706,27 @@ class MileageUpdate(models.Model):
             })
     
     def save(self, *args, **kwargs):
-        self.full_clean()
-        
-        # Update the car's mileage if this update has a higher value
-        update_car = False
+        """
+        Save the mileage update, and update the car's mileage if this update has a higher value.
+        Also update the car's service predictions to ensure they account for the latest mileage.
+        """
+        # Check if the mileage is higher than the car's current mileage
         if self.mileage > self.car.mileage:
             self.car.mileage = self.mileage
-            update_car = True
-            
+            self.car.save(update_fields=['mileage'])
+
         # Save this mileage update
         super().save(*args, **kwargs)
         
-        # After saving, try to update the car's service predictions
-        if update_car:
-            self.car.save(update_fields=['mileage'])
-            # Try to update service predictions
-            self.car.update_service_predictions()
-            
+        # Always update the car's service predictions after a new mileage update
+        # This ensures average daily mileage is recalculated with the latest data
+        self.car.update_service_predictions()
+        
+        # Log the mileage update for debugging
+        logger = logging.getLogger(__name__)
+        logger.info(f"MileageUpdate saved for car {self.car.id} ({self.car.make} {self.car.model}): {self.mileage}km. "
+                   f"Car's current mileage: {self.car.mileage}km. Service predictions updated.")
+        
     def __str__(self):
         return f"{self.car.license_plate} - {self.mileage} km ({self.reported_date.strftime('%Y-%m-%d')})"
         
@@ -398,8 +764,15 @@ class Service(models.Model):
     service_type = models.ForeignKey(ServiceInterval, on_delete=models.SET_NULL, 
                                    related_name='services', null=True, blank=True,
                                    help_text=_('The type of service performed, used for future service predictions.'))
-    is_routine_maintenance = models.BooleanField(_('Routine Maintenance'), default=False, 
-                                              help_text=_('Whether this service should reset the maintenance interval for prediction purposes.'))
+    is_routine_maintenance = models.BooleanField(
+        default=False,
+        help_text=_(
+            "Check this box if this service is part of the car's regular maintenance schedule. "
+            "When checked and the service is completed, a service history record will be created "
+            "and used for future service predictions. For non-routine repairs (like fixing a broken part), "
+            "leave this unchecked."
+        )
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -450,77 +823,85 @@ class Service(models.Model):
                     })
 
     def save(self, *args, **kwargs):
-        # Call the clean method to validate
-        self.full_clean()
+        is_new = self.pk is None
         
-        # Check if status is being changed to 'completed'
-        is_now_completed = False
-        status_changed = False
+        # Get the old status if this is an existing service
         old_status = None
-        
-        if self.pk:
-            try:
-                old_service = Service.objects.get(pk=self.pk)
-                old_status = old_service.status
-                if old_status != self.status:
-                    status_changed = True
-            except Service.DoesNotExist:
-                pass
-                
-            if old_status != 'completed' and self.status == 'completed':
-                is_now_completed = True
-                # Set completed date if not set
-                if not self.completed_date:
-                    self.completed_date = timezone.now()
-                    
-                # Update car's mileage if service_mileage is higher
-                if self.service_mileage and self.service_mileage > self.car.mileage:
-                    self.car.mileage = self.service_mileage
-                    self.car.save(update_fields=['mileage'])
-                    
-                # Only update service history for routine maintenance services
-                if self.is_routine_maintenance:
-                    # Update the car's last service info
-                    self.car.last_service_date = self.completed_date.date()
-                    self.car.last_service_mileage = self.service_mileage
-                    
-                    # If there's a service type, store the interval for future reference
-                    if self.service_type:
-                        # Log service interval for this service
-                        from .models import ServiceHistory
-                        ServiceHistory.objects.create(
-                            car=self.car,
-                            service=self,
-                            service_interval=self.service_type,
-                            service_date=self.completed_date.date(),
-                            service_mileage=self.service_mileage
-                        )
-                    
-                    self.car.save(update_fields=['last_service_date', 'last_service_mileage'])
-                    
-                    # After completion, recalculate next service prediction
-                    self.car.update_service_predictions()
-        
+        if not is_new:
+            old_status = Service.objects.get(pk=self.pk).status
+            
+        # Call the original save method first
         super().save(*args, **kwargs)
         
-        # Send notification if service was just completed
-        if is_now_completed:
-            self._create_completion_notification()
-            # Send email notification
-            from .utils import send_service_completed_notification
-            send_service_completed_notification(self)
-            # Send SMS notification
-            from utils.sms_utils import send_service_completed_sms
-            send_service_completed_sms(self)
-
-    def _create_completion_notification(self):
-        """Create a notification when a service is completed"""
-        Notification.objects.create(
-            customer=self.car.customer,
-            title=_('Service Completed'),
-            message=_('Your service "{}" has been completed.').format(self.title),
-            notification_type='service_update'
-        )
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Update the car's mileage if this service has a service_mileage and is being completed
+        # This should happen for ALL services, not just routine maintenance
+        if self.status == 'completed' and self.service_mileage and self.service_mileage > self.car.mileage:
+            logger.info(f"Updating car mileage from {self.car.mileage} to {self.service_mileage} for car {self.car.id}")
+            self.car.mileage = self.service_mileage
+            self.car.save(update_fields=['mileage'])
+            
+        # Process service completion for routine maintenance
+        if self.status == 'completed' and old_status != 'completed' and self.is_routine_maintenance and self.service_type:
+            from core.models import ServiceHistory
+            
+            # Check if service history already exists
+            existing_history = ServiceHistory.objects.filter(service=self).exists()
+            
+            if not existing_history:
+                try:
+                    logger.info(f"Creating service history for service {self.id}")
+                    
+                    # Get or calculate service date and mileage
+                    service_date = self.completed_date.date() if self.completed_date else timezone.now().date()
+                    service_mileage = self.service_mileage or self.car.mileage
+                    
+                    # Create service history record
+                    service_history = ServiceHistory.objects.create(
+                        car=self.car,
+                        service=self,
+                        service_interval=self.service_type,
+                        service_date=service_date,
+                        service_mileage=service_mileage
+                    )
+                    
+                    # Update car's last service info
+                    self.car.last_service_date = service_date
+                    self.car.last_service_mileage = service_mileage
+                    self.car.save(update_fields=['last_service_date', 'last_service_mileage'])
+                    
+                    # Update service predictions
+                    self.car.update_service_predictions()
+                    
+                    logger.info(f"Service history created with ID {service_history.id}")
+                except Exception as e:
+                    logger.error(f"Error creating service history: {str(e)}")
+            else:
+                logger.info(f"Service history already exists for service {self.id}")
+                
+        # Send notification when status changes to completed
+        if self.status == 'completed' and old_status != 'completed':
+            try:
+                from utils.email_utils import send_service_completed_notification
+                send_service_completed_notification(self)
+                
+                from utils.sms_utils import send_service_completed_sms
+                send_service_completed_sms(self)
+                
+                # Create in-app notification
+                from core.models import Notification
+                Notification.objects.create(
+                    customer=self.car.customer,
+                    title=_('Service Completed'),
+                    message=_('Your service "{}" has been completed.').format(self.title),
+                    notification_type='service_update'
+                )
+                
+            except Exception as e:
+                logger.error(f"Error sending service completion notifications: {str(e)}")
+                # Don't re-raise the exception to avoid breaking the save process
 
     def __str__(self):
         return f"{self.title} - {self.car}"
@@ -535,6 +916,67 @@ class Service(models.Model):
             models.Index(fields=['completed_date']),
             models.Index(fields=['created_at']),
         ]
+
+    # Additional method for debugging service history creation
+    def debug_service_history(self):
+        """Check why service history isn't being created and return diagnostic information"""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        debug_info = {
+            "service_id": self.id,
+            "service_title": self.title,
+            "status": self.status,
+            "is_routine_maintenance": self.is_routine_maintenance,
+            "has_service_type": self.service_type is not None,
+            "completed_date": self.completed_date,
+            "service_mileage": self.service_mileage,
+            "problems": []
+        }
+        
+        # Check for existing service history
+        from core.models import ServiceHistory
+        existing_history = ServiceHistory.objects.filter(service=self).exists()
+        debug_info["existing_history"] = existing_history
+        
+        # Check for required fields
+        if not self.is_routine_maintenance:
+            debug_info["problems"].append("Service is not marked as routine maintenance")
+            
+        if self.status != 'completed':
+            debug_info["problems"].append("Service status is not 'completed'")
+            
+        if not self.service_type:
+            debug_info["problems"].append("Service has no service_type set")
+            
+        if not self.completed_date:
+            debug_info["problems"].append("Service has no completed_date")
+            
+        if not self.service_mileage:
+            debug_info["problems"].append("Service has no service_mileage")
+            
+        # Log the debug info
+        logger.info(f"Service history debug info: {debug_info}")
+        
+        # Try to create service history if conditions are met
+        if self.status == 'completed' and self.is_routine_maintenance and self.service_type and not existing_history:
+            try:
+                service_history = ServiceHistory.objects.create(
+                    car=self.car,
+                    service=self,
+                    service_interval=self.service_type,
+                    service_date=self.completed_date.date() if self.completed_date else timezone.now().date(),
+                    service_mileage=self.service_mileage or self.car.mileage
+                )
+                debug_info["result"] = f"Created service history record with ID {service_history.id}"
+                logger.info(f"Successfully created service history through debug method: {service_history.id}")
+            except Exception as e:
+                debug_info["result"] = f"Error creating service history: {str(e)}"
+                logger.error(f"Failed to create service history through debug method: {str(e)}")
+        else:
+            debug_info["result"] = "Conditions not met for creating service history"
+            
+        return debug_info
 
 
 class ServiceItem(models.Model):

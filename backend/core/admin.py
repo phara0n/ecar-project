@@ -8,7 +8,7 @@ from django.contrib.admin.widgets import AutocompleteSelect
 from django.contrib.admin import site
 from django.db import models
 from django.utils.safestring import mark_safe
-from django.urls import path
+from django.urls import path, reverse
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 from django.contrib import messages
@@ -84,24 +84,57 @@ class ServiceItemInline(admin.TabularInline):
 
 @admin.register(Car)
 class CarAdmin(admin.ModelAdmin):
-    list_display = ('id', 'license_plate', 'make', 'model', 'year', 'get_customer_name', 'mileage', 'next_service_date', 'next_service_mileage')
+    list_display = ('id', 'license_plate', 'make', 'model', 'year', 'get_customer_name', 'initial_mileage', 'mileage', 'next_service_date', 'next_service_mileage')
     list_filter = ('make', 'year', 'fuel_type')
     search_fields = ('license_plate', 'make', 'model', 'vin', 'customer__user__first_name', 'customer__user__last_name')
     autocomplete_fields = ['customer']  # Use autocomplete to prevent recursion
-    readonly_fields = ['average_daily_mileage', 'next_service_date', 'next_service_mileage']
+    readonly_fields = ['average_daily_mileage', 'next_service_date', 'next_service_mileage', 'update_predictions_button']
+    actions = ['update_predictions_for_selected']
     fieldsets = (
         (None, {
-            'fields': ('customer', 'make', 'model', 'year', 'license_plate', 'vin', 'fuel_type', 'mileage')
+            'fields': ('customer', 'make', 'model', 'year', 'license_plate', 'vin', 'fuel_type', 'initial_mileage', 'mileage')
         }),
         (_('Service History'), {
             'fields': ('last_service_date', 'last_service_mileage')
         }),
         (_('Service Predictions'), {
-            'fields': ('average_daily_mileage', 'next_service_date', 'next_service_mileage'),
+            'fields': ('average_daily_mileage', 'next_service_date', 'next_service_mileage', 'update_predictions_button'),
             'classes': ('collapse',),
             'description': _('These fields are calculated automatically based on mileage updates and service history.')
         }),
     )
+    
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('<path:object_id>/update_predictions/', 
+                 self.admin_site.admin_view(self.update_predictions_view),
+                 name='car_update_predictions'),
+        ]
+        return custom_urls + urls
+    
+    def update_predictions_button(self, obj):
+        if obj.pk:
+            url = reverse('admin:car_update_predictions', args=[obj.pk])
+            return mark_safe(f'<a class="button" href="{url}">{_("Update Service Predictions")}</a>')
+        return ""
+    update_predictions_button.short_description = ""
+    update_predictions_button.allow_tags = True
+    
+    def update_predictions_view(self, request, object_id):
+        car = self.get_object(request, object_id)
+        if car:
+            success = car.update_service_predictions()
+            if success:
+                msg = _('Service predictions updated successfully.')
+                self.message_user(request, msg, messages.SUCCESS)
+            else:
+                msg = _('Could not update service predictions. Check the logs for details.')
+                self.message_user(request, msg, messages.ERROR)
+        
+        return HttpResponseRedirect(
+            reverse('admin:core_car_change', args=[object_id])
+        )
     
     def get_customer_name(self, obj):
         return f"{obj.customer.user.first_name} {obj.customer.user.last_name}"
@@ -122,11 +155,12 @@ class CarAdmin(admin.ModelAdmin):
         """
         Make certain fields read-only for non-superusers when editing an existing car.
         - Mileage can only be modified by superusers after initial creation
+        - Initial mileage can only be modified by superusers
         """
         readonly_fields = list(super().get_readonly_fields(request, obj))
         
         # Always make prediction fields read-only
-        for field in ['average_daily_mileage', 'next_service_date', 'next_service_mileage']:
+        for field in ['average_daily_mileage', 'next_service_date', 'next_service_mileage', 'update_predictions_button']:
             if field not in readonly_fields:
                 readonly_fields.append(field)
         
@@ -135,6 +169,13 @@ class CarAdmin(admin.ModelAdmin):
             # Add mileage to readonly_fields if not already there
             if 'mileage' not in readonly_fields:
                 readonly_fields.append('mileage')
+            # Add initial_mileage to readonly_fields if not already there
+            if 'initial_mileage' not in readonly_fields:
+                readonly_fields.append('initial_mileage')
+        
+        # Initial mileage should always be read-only for non-superusers, even when creating a new car
+        if not request.user.is_superuser and 'initial_mileage' not in readonly_fields:
+            readonly_fields.append('initial_mileage')
                 
         return readonly_fields
     
@@ -142,6 +183,7 @@ class CarAdmin(admin.ModelAdmin):
         """
         Ensure that cars can be transferred between customers.
         Even non-superusers can change car ownership.
+        Add help text for mileage fields.
         """
         form = super().get_form(request, obj, **kwargs)
         if not request.user.is_superuser and obj:
@@ -162,7 +204,32 @@ class CarAdmin(admin.ModelAdmin):
                 'Please contact a superadmin if you need to update this field.'
             )
             
+            if 'initial_mileage' in form.base_fields:
+                form.base_fields['initial_mileage'].help_text = _(
+                    'Initial mileage can only be set by superadmins. '
+                    'This value represents the starting mileage when the car was added to the system.'
+                )
+            
         return form
+
+    def update_predictions_for_selected(self, request, queryset):
+        """Admin action to update service predictions for selected cars"""
+        updated_count = 0
+        for car in queryset:
+            success = car.update_service_predictions()
+            if success:
+                updated_count += 1
+                
+        self.message_user(
+            request,
+            ngettext(
+                'Service prediction updated for %d car.',
+                'Service predictions updated for %d cars.',
+                updated_count
+            ) % updated_count,
+            messages.SUCCESS if updated_count > 0 else messages.WARNING
+        )
+    update_predictions_for_selected.short_description = _('Update service predictions for selected cars')
 
 class MileageUpdateInline(admin.TabularInline):
     model = MileageUpdate
