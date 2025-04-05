@@ -4,6 +4,13 @@
 
 The ECAR project uses Docker and Docker Compose to containerize the entire application stack, providing a consistent environment across development and production. This document covers the setup, maintenance, and troubleshooting of the Docker infrastructure.
 
+## Recent Updates (May 20, 2024)
+
+- Removed `init_database.sh` script execution from the backend container configuration
+- Simplified the backend container startup command to only run migrations and start the Django server
+- Streamlined Docker Compose configuration for better maintainability
+- Previous initialization process that included loading fixtures has been removed in favor of a simpler approach
+
 ## Container Architecture
 
 Our Docker infrastructure consists of the following containers:
