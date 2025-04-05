@@ -3,6 +3,7 @@ import { useEffect, useState, ReactElement } from 'react';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
+import { Vehicles } from './pages/Vehicles';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { authService } from './lib/api';
 import { Toaster } from 'sonner';
@@ -53,7 +54,7 @@ function App() {
           }
         />
         
-        {/* Customers route - now using actual component */}
+        {/* Customers routes */}
         <Route
           path="/customers"
           element={
@@ -65,8 +66,58 @@ function App() {
           }
         />
         
+        {/* Vehicles routes */}
+        <Route
+          path="/vehicles"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Vehicles />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
+        <Route
+          path="/vehicles/new"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Vehicles />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
+        <Route
+          path="/vehicles/:id/edit"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <Vehicles />
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
+        <Route
+          path="/vehicles/:id/services"
+          element={
+            <RequireAuth>
+              <DashboardLayout>
+                <div className="p-6">
+                  <h1 className="text-3xl font-bold">Vehicle Service History</h1>
+                  <p className="text-muted-foreground mt-2">
+                    Service history page is under construction. Check back soon!
+                  </p>
+                </div>
+              </DashboardLayout>
+            </RequireAuth>
+          }
+        />
+        
         {/* Placeholder routes for other pages */}
-        {['vehicles', 'services', 'appointments', 'invoices', 'settings'].map((path) => (
+        {['services', 'appointments', 'invoices', 'settings'].map((path) => (
           <Route
             key={path}
             path={`/${path}`}

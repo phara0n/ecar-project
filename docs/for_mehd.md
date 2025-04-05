@@ -23,11 +23,15 @@ The ECAR project is a garage management system with a Django backend and React a
 - ✅ Vehicle viewing functionality through dedicated button
 
 ### Vehicles Management
-- 🔄 In progress
-- 🔄 Vehicle listing connected to backend
-- 🔄 View vehicles by customer implemented
-- ⏰ TODO: Implement vehicle CRUD operations
-- ⏰ TODO: Finish connecting to all API endpoints
+- ✅ Vehicle listing implemented with search and filtering
+- ✅ Customer filtering for vehicles
+- ✅ Vehicle creation with form validation
+- ✅ Vehicle editing functionality
+- ✅ Vehicle deletion with confirmation
+- ✅ Integration with customer data
+- 🔄 Service history view in progress
+- ⏰ TODO: Complete service history implementation
+- ⏰ TODO: Add vehicle detail view
 
 ### Services Management
 - ⏰ TODO: Implement CRUD operations
@@ -51,13 +55,16 @@ The ECAR project is a garage management system with a Django backend and React a
 - Added security features to customer deletion:
   - Customers with attached vehicles cannot be deleted (prevents orphaned vehicles)
   - User accounts are automatically deleted along with customer records (prevents orphaned users)
+- Implemented full vehicle management functionality:
+  - Created Vehicles page with listing, filtering, and search
+  - Added VehicleDialog component for creating and editing vehicles
+  - Implemented vehicle deletion with confirmation
+  - Connected to backend API for CRUD operations
 
 ## Next Steps
-1. Complete vehicle listing implementation
-2. Implement vehicle details view with customer relationship
-3. Add vehicle creation and editing functionality
-4. Implement services management with CRUD operations
-5. Implement appointments scheduling
+1. Complete service history display for vehicles
+2. Implement services management with CRUD operations
+3. Implement appointments scheduling
 
 ## Technical Notes
 - Backend API is running at `http://localhost:8000/api`

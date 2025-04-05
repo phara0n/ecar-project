@@ -50,7 +50,17 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 - Security checks to prevent deletion of customers with attached vehicles
 - Cascading deletion to ensure user accounts are removed with customer records
 
+#### Vehicle Management
+- Vehicle listing page with search and filtering
+- Vehicle add/edit dialog with form validation
+- Vehicle deletion with confirmation dialog
+- Customer filtering dropdown
+- Integration with backend API endpoints
+- Loading states and error handling
+- Navigation to service history (placeholder)
+
 ### In Progress
+- Service history display for vehicles
 - Vehicles management CRUD operations
 - Viewing of vehicles associated with customers
 
@@ -73,9 +83,12 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 | Customers - Create | `/customers/` | ✅ Implemented |
 | Customers - Update | `/customers/:id/` | ✅ Implemented |
 | Customers - Delete | `/customers/:id/` | ✅ Implemented |
-| Vehicles - List | `/vehicles/` | 🔄 In Progress |
-| Vehicles - Customer Vehicles | `/vehicles/?customer_id=:id` | 🔄 In Progress |
-| Vehicles - CRUD | `/vehicles/:id/` | ⏰ Pending |
+| Vehicles - List | `/vehicles/` | ✅ Implemented |
+| Vehicles - Customer Vehicles | `/vehicles/?customer=:id` | ✅ Implemented |
+| Vehicles - Retrieve | `/vehicles/:id/` | ✅ Implemented |
+| Vehicles - Create | `/vehicles/` | ✅ Implemented |
+| Vehicles - Update | `/vehicles/:id/` | ✅ Implemented |
+| Vehicles - Delete | `/vehicles/:id/` | ✅ Implemented |
 | Services - List | `/services/` | ⏰ Pending |
 | Services - CRUD | `/services/:id/` | ⏰ Pending |
 | Appointments - List | `/appointments/` | ⏰ Pending |
@@ -90,12 +103,11 @@ ECAR is a comprehensive garage management system designed to help automotive ser
 - Backend implementation of on_delete=CASCADE for user-customer relationship should be verified
 
 ## Next Development Phase
-1. Complete vehicles management UI and API integration
-2. Implement vehicle listing for specific customers
-3. Implement services management functionality
-4. Build appointments scheduling system with calendar interface
-5. Develop invoice generation and payment tracking
-6. Create comprehensive dashboard with analytics
+1. Complete service history view for vehicles
+2. Implement services management functionality
+3. Build appointments scheduling system with calendar interface
+4. Develop invoice generation and payment tracking
+5. Create comprehensive dashboard with analytics
 
 ## Project Structure
 ```
