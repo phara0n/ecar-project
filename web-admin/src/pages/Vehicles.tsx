@@ -14,7 +14,7 @@ import { VehicleDialog, VehicleFormData } from "@/components/VehicleDialog";
 // Interface to match backend API response structure
 interface Vehicle {
   id: number;
-  customer: number;
+  customer: number | { id: number; [key: string]: any };
   customer_name?: string;  // This will be populated manually
   make: string;
   model: string;
@@ -65,6 +65,9 @@ export function Vehicles() {
     const customerId = searchParams.get("customer");
     if (customerId) {
       setSelectedCustomerId(customerId);
+    } else {
+      // If no customer ID is specified, set to "all"
+      setSelectedCustomerId("");
     }
 
     // Check the route parameters to see if we should show a dialog
@@ -93,9 +96,14 @@ export function Vehicles() {
       const response = await vehicleService.getById(vehicleId);
       const vehicleData = response.data;
       
+      // Extract customer ID whether it's a number or an object
+      const customerId = typeof vehicleData.customer === 'object' && vehicleData.customer !== null
+        ? vehicleData.customer.id
+        : vehicleData.customer;
+      
       const vehicleFormData: VehicleFormData = {
         id: vehicleData.id,
-        customer: vehicleData.customer,
+        customer: customerId,
         make: vehicleData.make,
         model: vehicleData.model,
         year: vehicleData.year,
@@ -210,9 +218,14 @@ export function Vehicles() {
     
     // Add customer names to vehicles
     return vehiclesData.map(vehicle => {
+      // Extract customer ID whether it's a number or an object
+      const customerId = typeof vehicle.customer === 'object' && vehicle.customer !== null
+        ? vehicle.customer.id
+        : vehicle.customer;
+      
       return {
         ...vehicle,
-        customer_name: customerMap.get(vehicle.customer) || `Customer #${vehicle.customer}`
+        customer_name: customerMap.get(customerId) || `Customer #${customerId}`
       };
     });
   };
@@ -265,15 +278,23 @@ export function Vehicles() {
   };
 
   const handleCustomerFilterChange = (customerId: string) => {
-    setSelectedCustomerId(customerId);
-    
-    // Update URL params
-    if (customerId) {
-      setSearchParams({ customer: customerId });
-    } else {
-      // Remove customer param if no customer is selected
+    // Handle "all" as no filter
+    if (customerId === "all") {
+      setSelectedCustomerId("");
+      // Remove customer param if "all" is selected
       searchParams.delete("customer");
       setSearchParams(searchParams);
+    } else {
+      setSelectedCustomerId(customerId);
+      
+      // Update URL params
+      if (customerId) {
+        setSearchParams({ customer: customerId });
+      } else {
+        // Remove customer param if no customer is selected
+        searchParams.delete("customer");
+        setSearchParams(searchParams);
+      }
     }
   };
 
@@ -328,14 +349,14 @@ export function Vehicles() {
         
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Select 
-            value={selectedCustomerId} 
+            value={selectedCustomerId || "all"} 
             onValueChange={handleCustomerFilterChange}
           >
             <SelectTrigger className="w-full sm:w-[220px]">
               <SelectValue placeholder="Filter by customer" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Customers</SelectItem>
+              <SelectItem value="all">All Customers</SelectItem>
               {customers.map(customer => (
                 <SelectItem key={customer.id} value={customer.id.toString()}>
                   {customer.user.first_name} {customer.user.last_name}
@@ -419,7 +440,11 @@ export function Vehicles() {
                           {vehicle.license_plate || "N/A"}
                         </td>
                         <td className="px-4 py-3 text-sm">
-                          {vehicle.customer_name || `Customer #${vehicle.customer}`}
+                          {vehicle.customer_name || (
+                            typeof vehicle.customer === 'object' && vehicle.customer !== null
+                              ? `${vehicle.customer.user?.first_name || ''} ${vehicle.customer.user?.last_name || ''}`.trim() || `Customer #${vehicle.customer.id}`
+                              : `Customer #${vehicle.customer}`
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
                           {vehicle.year || "N/A"}
