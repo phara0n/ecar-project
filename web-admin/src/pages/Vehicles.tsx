@@ -419,6 +419,7 @@ export function Vehicles() {
                       <th className="px-4 py-3 text-left text-sm font-medium">License Plate</th>
                       <th className="px-4 py-3 text-left text-sm font-medium">Customer</th>
                       <th className="px-4 py-3 text-center text-sm font-medium">Year</th>
+                      <th className="px-4 py-3 text-center text-sm font-medium">Mileage</th>
                       <th className="px-4 py-3 text-center text-sm font-medium">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-medium">Last Service</th>
                       <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
@@ -448,6 +449,9 @@ export function Vehicles() {
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
                           {vehicle.year || "N/A"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          {vehicle.mileage ? `${vehicle.mileage.toLocaleString()} km` : "N/A"}
                         </td>
                         <td className="px-4 py-3 text-sm text-center">
                           <Badge
