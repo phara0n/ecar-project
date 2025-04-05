@@ -103,10 +103,13 @@ class Command(BaseCommand):
                 
                 # Create service history record
                 if not dry_run:
+                    # Use service.service_type directly as the service_interval
+                    service_interval_to_use = service.service_type or service_interval
+                    
                     service_history = ServiceHistory.objects.create(
                         car=service.car,
                         service=service,
-                        service_interval=service_interval,
+                        service_interval=service_interval_to_use,
                         service_date=service.completed_date.date(),
                         service_mileage=service.service_mileage
                     )
