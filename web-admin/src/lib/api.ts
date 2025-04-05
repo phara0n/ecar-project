@@ -148,12 +148,34 @@ export const customerService = USE_MOCK_API
 export const vehicleService = USE_MOCK_API
   ? mockVehicleService
   : {
-    getAll: () => api.get('/vehicles/'),
-    getById: (id: number) => api.get(`/vehicles/${id}/`),
-    getByCustomer: (customerId: number) => api.get(`/vehicles/?customer=${customerId}`),
-    create: (data: any) => api.post('/vehicles/', data),
-    update: (id: number, data: any) => api.put(`/vehicles/${id}/`, data),
-    delete: (id: number) => api.delete(`/vehicles/${id}/`)
+    getAll: () => api.get('/cars/'),
+    getById: (id: number) => api.get(`/cars/${id}/`),
+    getByCustomer: (customerId: number) => api.get(`/cars/?customer=${customerId}`),
+    create: (data: any) => {
+      // Transform the data to use customer_id instead of customer
+      const transformedData = { 
+        ...data,
+        customer_id: data.customer,
+      };
+      // Remove the original customer field to avoid conflicts
+      delete transformedData.customer;
+      
+      console.log('Creating vehicle with transformed data:', JSON.stringify(transformedData, null, 2));
+      return api.post('/cars/', transformedData);
+    },
+    update: (id: number, data: any) => {
+      // Transform the data to use customer_id instead of customer
+      const transformedData = { 
+        ...data,
+        customer_id: data.customer,
+      };
+      // Remove the original customer field to avoid conflicts
+      delete transformedData.customer;
+      
+      console.log('Updating vehicle', id, 'with transformed data:', JSON.stringify(transformedData, null, 2));
+      return api.patch(`/cars/${id}/`, transformedData);
+    },
+    delete: (id: number) => api.delete(`/cars/${id}/`)
   };
 
 // Service services

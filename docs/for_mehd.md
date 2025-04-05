@@ -1,78 +1,48 @@
-# ECAR Project Status for Mehd
+# ECAR Project Update for Team
 
-## Project Overview
-The ECAR project is a garage management system with a Django backend and React admin dashboard. The admin dashboard allows garage staff to manage customers, vehicles, services, appointments, and invoices.
+## Recent Changes and Current Status
 
-## Current Status
+### Fixed UI Issues
+- Fixed a critical UI error in the Vehicles page where the Select component was failing due to an empty string value
+- Updated customer filtering to use "all" as the value instead of an empty string to comply with shadcn/ui Select component requirements
+- Ensured URL parameters and UI state are properly synchronized
+- Fixed vehicle creation/update error by transforming the customer field to customer_id for API calls
+- Updated vehicle API to use PATCH instead of PUT for better compatibility with backend
 
-### Authentication
-- ✅ Backend JWT authentication implemented and tested
-- ✅ Login page connected to backend
-- ✅ Protected routes implemented
-- ✅ Logout functionality added with toast notifications
-- ✅ Theme switching with toast notifications
+### API Integration Updates
+- Corrected API endpoints in the frontend to use `/cars/` instead of `/vehicles/` to match the backend structure
+- All vehicle management operations (list, create, edit, delete) are now working correctly with the backend
+- Customer filtering for vehicles is functioning properly
 
-### Customer Management
-- ✅ Customers list UI implemented
-- ✅ Add/Edit customer dialog created
-- ✅ Delete customer confirmation dialog created
-- ✅ Connected to API endpoints for CRUD operations
-- ✅ Toast notifications for success/error feedback
-- ✅ Loading states and error handling
-- ✅ Username field display for app access management
-- ✅ Vehicle viewing functionality through dedicated button
+### Current Development Status
+- Customer management is fully implemented (list, create, edit, delete)
+- Vehicle management is fully implemented (list, create, edit, delete) 
+- Customer-Vehicle relationship is properly established
+- Authentication system is working correctly
+- UI components are functioning as expected with proper shadcn/ui implementation
 
-### Vehicles Management
-- ✅ Vehicle listing implemented with search and filtering
-- ✅ Customer filtering for vehicles
-- ✅ Vehicle creation with form validation
-- ✅ Vehicle editing functionality
-- ✅ Vehicle deletion with confirmation
-- ✅ Integration with customer data
-- 🔄 Service history view in progress
-- ⏰ TODO: Complete service history implementation
-- ⏰ TODO: Add vehicle detail view
+### In Progress
+- Service history display for vehicles
+- Vehicle details page with comprehensive information
 
-### Services Management
-- ⏰ TODO: Implement CRUD operations
-- ⏰ TODO: Connect to API endpoints
-
-### Appointments Management
-- ⏰ TODO: Implement scheduling interface
-- ⏰ TODO: Connect to API endpoints
-
-### Invoices Management
-- ⏰ TODO: Implement invoice generation
-- ⏰ TODO: Implement payment tracking
-- ⏰ TODO: Connect to API endpoints
-
-## Recent Changes
-- Added username field to customer table for app access management
-- Added vehicle viewing button to customer table
-- Implemented toast notifications for logout and theme switching
-- Fixed CORS issues with API requests
-- Set up proper error handling for API responses
-- Added security features to customer deletion:
-  - Customers with attached vehicles cannot be deleted (prevents orphaned vehicles)
-  - User accounts are automatically deleted along with customer records (prevents orphaned users)
-- Implemented full vehicle management functionality:
-  - Created Vehicles page with listing, filtering, and search
-  - Added VehicleDialog component for creating and editing vehicles
-  - Implemented vehicle deletion with confirmation
-  - Connected to backend API for CRUD operations
+### Known Issues
+- Need to ensure proper validation for all form fields
+- Some UI components need proper error handling
+- Mobile responsiveness needs improvement in some areas
 
 ## Next Steps
-1. Complete service history display for vehicles
-2. Implement services management with CRUD operations
-3. Implement appointments scheduling
+1. Complete the service history functionality
+2. Implement the vehicle details page
+3. Begin work on appointment scheduling
+4. Add dashboard analytics
+5. Improve error handling across the application
 
-## Technical Notes
-- Backend API is running at `http://localhost:8000/api`
-- JWT authentication is working with refresh token mechanism
-- We're using Shadcn UI components for the interface
-- Sonner toast notifications implemented for user feedback
-- Username field indicates whether customers have app access
-- Customer deletion now includes a security check for attached vehicles and cascading deletion of user accounts
+## Shadcn/UI Component Notes
+Some important notes about the shadcn/ui components we're using:
 
-## Last Updated
-Updated on: May 20, 2024
+1. `<Select.Item />` components must have a non-empty string value
+2. Form validation should be done before submission
+3. Always include proper loading states for async operations
+4. Use toast notifications for user feedback
+
+## Updated: May 20, 2024

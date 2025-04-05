@@ -220,7 +220,13 @@ export function VehicleDialog({
         if (typeof apiErrors === 'object') {
           // Extract field-specific errors
           Object.entries(apiErrors).forEach(([key, value]) => {
-            if (key !== 'detail') { // Skip the generic 'detail' error
+            if (key === 'customer_id') {
+              // Map customer_id error to the customer field in our form
+              setFormErrors(prev => ({
+                ...prev,
+                customer: Array.isArray(value) ? value[0] : value
+              }));
+            } else if (key !== 'detail') { // Skip the generic 'detail' error
               setFormErrors(prev => ({
                 ...prev,
                 [key]: Array.isArray(value) ? value[0] : value
