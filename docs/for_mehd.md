@@ -1,5 +1,22 @@
 # ECAR Project Update for Team
 
+## May 27, 2024 Update - Git Synchronization
+
+Successfully synchronized the `main` and `dev` branches on the `phara0n/ecar-project` repository.
+
+### Steps Taken:
+1. **Configured Git Identity:** Set the global `user.name` to "phara0n" and `user.email` to "phara0ntn@gmail.com".
+2. **Staged Changes:** Used `git add .` to stage all modified and new files.
+3. **Committed Changes:** Created a commit on the `main` branch with the message `"feat: add settings, i18n, vehicle popover, user dialog, backend fixes"`. This commit included recent features like the settings dialog, internationalization, backend model/API fixes, and documentation updates.
+4. **Pushed to `main`:** Pushed the commit to the remote `origin/main` branch.
+5. **Switched to `dev`:** Checked out the local `dev` branch.
+6. **Merged `main` into `dev`:** Merged the `main` branch into `dev` using a fast-forward merge.
+7. **Pushed to `dev`:** Pushed the updated `dev` branch to the remote `origin/dev` branch.
+
+### Current Status:
+- Both `main` and `dev` branches are now up-to-date locally and on the remote repository.
+- All recent feature implementations and fixes are reflected in both branches.
+
 ## Service Prediction System Implementation
 
 I've created a comprehensive service prediction population script that initializes all the necessary data for the mileage-based service prediction system. This enhances our existing backend functionality by:
