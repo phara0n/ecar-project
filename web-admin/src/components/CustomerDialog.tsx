@@ -3,298 +3,196 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { customerService } from "@/lib/api";
+import { customerService, userService } from "@/lib/api";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Info, User, Key } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { User as LucideUserIcon } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { useTranslation } from 'react-i18next';
+import { Loader2 } from "lucide-react";
 
 export interface CustomerFormData {
-  id?: number;
+  user_id: number | null;
+  phone: string;
+  address?: string;
+}
+
+interface User {
+  id: number;
+  username: string;
   first_name: string;
   last_name: string;
   email: string;
+}
+
+interface FullCustomer {
+  id: number;
+  user: User;
   phone: string;
   address?: string;
-  username?: string;
-  password?: string;
 }
 
 interface CustomerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  customer?: CustomerFormData;
+  customerId?: number;
   onSuccess: () => void;
 }
 
-export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: CustomerDialogProps) {
-  const isEditing = !!customer?.id;
+export function CustomerDialog({ open, onOpenChange, customerId, onSuccess }: CustomerDialogProps) {
+  const { t } = useTranslation();
+  const isEditing = typeof customerId === 'number';
   const [formData, setFormData] = useState<CustomerFormData>({
-    first_name: "",
-    last_name: "",
-    email: "",
+    user_id: null,
     phone: "",
     address: "",
-    username: "",
-    password: "", 
   });
+  const [displayUserData, setDisplayUserData] = useState<User | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<User[]>([]);
+  
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("basic");
+  const [isFetchingData, setIsFetchingData] = useState(false);
 
   useEffect(() => {
-    // Reset errors when dialog opens/closes
     setFormErrors({});
+    setFormData({ user_id: null, phone: "", address: "" });
+    setDisplayUserData(null);
+    setAvailableUsers([]);
     
-    // Always start with basic tab, especially when editing
-    setActiveTab("basic");
-    
-    if (customer) {
-      setFormData({
-        id: customer.id,
-        first_name: customer.first_name || "",
-        last_name: customer.last_name || "",
-        email: customer.email || "",
-        phone: customer.phone || "",
-        address: customer.address || "",
-        username: customer.username || "",
-        // We don't show/use password when editing
-        password: "",
-      });
-    } else {
-      // Reset form when adding a new customer
-      setFormData({
-        first_name: "",
-        last_name: "",
-        email: "",
-        phone: "",
-        address: "",
-        username: "",
-        password: "",
-      });
+    if (open) {
+      setIsFetchingData(true);
+      if (isEditing && customerId) {
+        customerService.getById(customerId)
+          .then(response => {
+            const customerData: FullCustomer = response.data;
+            setFormData({ 
+              user_id: customerData.user.id,
+              phone: customerData.phone || "",
+              address: customerData.address || ""
+            });
+            setDisplayUserData(customerData.user);
+          })
+          .catch(err => {
+            console.error("Error fetching customer data:", err);
+            toast.error(t('customerDialog.errors.loadFailed', 'Failed to load customer details.'));
+            onOpenChange(false);
+          })
+          .finally(() => setIsFetchingData(false));
+      } else {
+        userService.getUnassociated()
+          .then(response => {
+            const users = Array.isArray(response.data) 
+                ? response.data 
+                : (response.data && Array.isArray(response.data.results)) 
+                  ? response.data.results 
+                  : [];
+            setAvailableUsers(users);
+            console.log("Available users fetched and processed:", users);
+          })
+          .catch(err => {
+            console.error("Error fetching available users:", err);
+            toast.error(t('customerDialog.errors.usersLoadFailed', 'Failed to load users for selection.'));
+            setAvailableUsers([]);
+          })
+          .finally(() => setIsFetchingData(false));
+      }
     }
-  }, [customer, open]);
+  }, [open, customerId, isEditing, onOpenChange, t]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectUserChange = (userIdString: string) => {
+    console.log("User selected (string value from Select):", userIdString);
+    const userId = userIdString ? parseInt(userIdString, 10) : null;
+    console.log("Parsed user ID to set:", userId);
+    setFormData((prev) => ({
+      ...prev,
+      user_id: userId,
+    }));
+    // Clear potential error when a valid selection is made
+    if (userId !== null && formErrors.user_id) {
+        setFormErrors(prev => ({ ...prev, user_id: "" }));
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));
-    
-    // Clear error for this field when user types
     if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ""
-      }));
+      setFormErrors(prev => ({ ...prev, [name]: "" }));
     }
   };
 
   const validateForm = (): boolean => {
+    console.log("validateForm called. formData state:", JSON.stringify(formData));
     const errors: Record<string, string> = {};
     
-    // Basic info validation
-    if (!formData.first_name.trim()) {
-      errors.first_name = "First name is required";
+    if (!isEditing && formData.user_id === null) { 
+        console.log("Validation Error: user_id is null in create mode.");
+        errors.user_id = t('customerDialog.validation.userRequired', 'Please select a user');
     }
-    
-    if (!formData.email.trim()) {
-      errors.email = "Email is required";
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      errors.email = "Please enter a valid email address";
-    }
-    
+
     if (!formData.phone.trim()) {
       errors.phone = "Phone number is required";
     } else if (!/^\+?[0-9\s\-\(\)]+$/.test(formData.phone)) {
       errors.phone = "Please enter a valid phone number";
     }
     
-    // Credentials validation ONLY for new users
-    if (!isEditing) {
-      if (!formData.username?.trim()) {
-        errors.username = "Username is required for mobile app access";
-      } else if (formData.username.length < 4) {
-        errors.username = "Username must be at least 4 characters";
-      }
-      
-      if (!formData.password?.trim()) {
-        errors.password = "Password is required for mobile app access";
-      } else if (formData.password.length < 8) {
-        errors.password = "Password must be at least 8 characters";
-      }
-    }
-    
     setFormErrors(errors);
-    
-    // If there are errors, switch to the tab containing the first error
-    if (Object.keys(errors).length > 0) {
-      if (errors.first_name || errors.last_name || errors.email || errors.phone || errors.address) {
-        setActiveTab("basic");
-      } else if (!isEditing && (errors.username || errors.password)) {
-        setActiveTab("credentials");
-      }
-    }
-    
+    console.log("Validation result (errors object):", JSON.stringify(errors));
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    console.log("handleSubmit called. formData state:", JSON.stringify(formData));
     if (!validateForm()) {
+      console.log("Submit stopped because validateForm returned false.");
       return;
     }
-    
     setLoading(true);
 
     const toastId = toast.loading(
       isEditing ? "Updating customer..." : "Creating customer..."
     );
 
-    // Format data differently for create vs update
-    let dataToSend;
-    
-    if (isEditing) {
-      // When editing, only send basic info, not credentials
-      dataToSend = {
-        phone: formData.phone,
-        address: formData.address || '',
-        user: {
-          first_name: formData.first_name,
-          last_name: formData.last_name || ''
-        }
-      };
-      
-      // Only include email if it's changed
-      if (formData.email !== customer?.email) {
-        dataToSend.user.email = formData.email;
-      }
-    } else {
-      // When creating, send all info including credentials
-      dataToSend = {
-        phone: formData.phone,
-        address: formData.address || '',
-        user: {
-          email: formData.email,
-          username: formData.username || '',
-          first_name: formData.first_name,
-          last_name: formData.last_name || '',
-          password: formData.password
-        }
-      };
-    }
-
     try {
-      console.log(`${isEditing ? 'Updating' : 'Creating'} customer with data:`, dataToSend);
-      
-      if (isEditing && customer?.id) {
-        const response = await customerService.update(customer.id, dataToSend);
-        console.log('Update response:', response.data);
+      if (isEditing && customerId) {
+        const updateData = {
+            phone: formData.phone,
+            address: formData.address || null,
+        };
+        await customerService.update(customerId, updateData);
         toast.success("Customer updated successfully", { id: toastId });
       } else {
-        const response = await customerService.create(dataToSend);
-        console.log('Create response:', response.data);
+        if (formData.user_id === null) {
+            throw new Error("User ID is null during creation.");
+        }
+        const createData = {
+            user_id: formData.user_id,
+            phone: formData.phone,
+            address: formData.address || null,
+        };
+        console.log("Corrected createData to send:", JSON.stringify(createData, null, 2));
+        await customerService.create(createData);
         toast.success("Customer created successfully", { id: toastId });
       }
       onSuccess();
       onOpenChange(false);
     } catch (error: any) {
       console.error("Error saving customer:", error);
-      
-      // More detailed error logging
-      if (error.response) {
-        console.error('Response error data:', error.response.data);
-        console.error('Response error status:', error.response.status);
-        console.error('Response error headers:', error.response.headers);
-        
-        // Handle validation errors from Django REST Framework
-        if (error.response.status === 400 && typeof error.response.data === 'object') {
-          const apiErrors = error.response.data;
-          const formattedErrors: Record<string, string> = {};
-          
-          Object.entries(apiErrors).forEach(([field, messages]: [string, any]) => {
-            // Handle nested user field errors
-            if (field === 'user') {
-              if (typeof messages === 'object') {
-                Object.entries(messages).forEach(([userField, userMessages]: [string, any]) => {
-                  const msg = Array.isArray(userMessages) ? userMessages[0] : userMessages.toString();
-                  
-                  // Map user fields to form fields
-                  if (userField === 'email') formattedErrors['email'] = msg;
-                  else if (userField === 'username') formattedErrors['username'] = msg;
-                  else if (userField === 'password') formattedErrors['password'] = msg;
-                  else if (userField === 'first_name') formattedErrors['first_name'] = msg;
-                  else if (userField === 'last_name') formattedErrors['last_name'] = msg;
-                });
-              } else {
-                // Handle case where user field itself has an error message
-                formattedErrors['user'] = typeof messages === 'string' 
-                  ? messages 
-                  : Array.isArray(messages) 
-                    ? messages[0] 
-                    : 'Invalid user data';
-              }
-            } else {
-              // For non-user field errors
-              formattedErrors[field] = typeof messages === 'string'
-                ? messages
-                : Array.isArray(messages) 
-                  ? messages[0] 
-                  : messages.toString();
-            }
-            
-            // Ensure we switch to the appropriate tab for the error
-            if (field === 'first_name' || field === 'last_name' || field === 'email' || field === 'phone' || field === 'address' || 
-                field === 'user') {
-              setActiveTab("basic");
-            } else if (!isEditing && (field === 'username' || field === 'password')) {
-              setActiveTab("credentials");
-            }
-          });
-          
-          setFormErrors(formattedErrors);
-        }
-      } else if (error.request) {
-        console.error('Request error:', error.request);
-      } else {
-        console.error('Error message:', error.message);
+      const errorMsg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+      toast.error(`Failed to ${isEditing ? 'update' : 'create'} customer: ${errorMsg}`, { id: toastId });
+      if (error.response?.status === 400 && typeof error.response.data === 'object') {
+        const apiErrors = error.response.data;
+        const formattedErrors: Record<string, string> = {};
+        Object.entries(apiErrors).forEach(([field, messages]) => {
+          formattedErrors[field] = Array.isArray(messages) ? messages[0] : String(messages);
+        });
+        setFormErrors(formattedErrors);
       }
-      
-      let errorMessage = "An error occurred. Please try again.";
-      
-      if (error.response?.data) {
-        // Format Django REST framework error messages
-        const errors = error.response.data;
-        if (typeof errors === 'object') {
-          // Create a friendly error message from the error object
-          errorMessage = Object.entries(errors)
-            .map(([field, messages]: [string, any]) => {
-              // Handle the user object specifically
-              if (field === 'user') {
-                if (typeof messages === 'object') {
-                  // If user contains nested error fields, format them individually
-                  return Object.entries(messages)
-                    .map(([userField, userMsg]) => `${userField}: ${Array.isArray(userMsg) ? userMsg[0] : userMsg}`)
-                    .join(', ');
-                } else {
-                  // If user has a string error
-                  return `user: ${typeof messages === 'string' ? messages : JSON.stringify(messages)}`;
-                }
-              }
-              // Handle regular fields
-              if (Array.isArray(messages)) {
-                return `${field}: ${messages.join(', ')}`;
-              }
-              return `${field}: ${typeof messages === 'string' ? messages : JSON.stringify(messages)}`;
-            })
-            .join(', ');
-        } else if (typeof errors === 'string') {
-          errorMessage = errors;
-        }
-      }
-      
-      toast.error(errorMessage, { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -302,163 +200,92 @@ export function CustomerDialog({ open, onOpenChange, customer, onSuccess }: Cust
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>{isEditing ? "Edit Customer" : "Add New Customer"}</DialogTitle>
-            <DialogDescription>
-              {isEditing
-                ? "Update customer information in the system."
-                : "Add a new customer to the system."}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-            <TabsList className={`grid w-full ${isEditing ? 'grid-cols-1' : 'grid-cols-2'}`}>
-              <TabsTrigger value="basic" className="flex items-center gap-2">
-                <Info className="h-4 w-4" />
-                <span>Basic Info</span>
-              </TabsTrigger>
-              {!isEditing && (
-                <TabsTrigger value="credentials" className="flex items-center gap-2">
-                  <User className="h-4 w-4" />
-                  <span>App Credentials</span>
-                </TabsTrigger>
-              )}
-            </TabsList>
+      <DialogContent className="sm:max-w-[525px]">
+        <DialogHeader>
+          <DialogTitle>{isEditing ? "Edit Customer" : "Add New Customer"}</DialogTitle>
+          <DialogDescription>
+            {isEditing ? "Update the customer's phone number and address." : "Select a user and add their contact details."}
+          </DialogDescription>
+        </DialogHeader>
+        
+        {isFetchingData ? (
+            <div className="py-6 text-center">Loading data...</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="grid gap-4 py-4">
             
-            {/* Basic Info Tab */}
-            <TabsContent value="basic" className="p-0 pt-4">
-              <div className="grid gap-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-2">
-                    <Label htmlFor="first_name">First Name</Label>
-                    <Input
-                      id="first_name"
-                      name="first_name"
-                      value={formData.first_name}
-                      onChange={handleChange}
-                      required
-                      className={formErrors.first_name ? "border-destructive" : ""}
-                    />
-                    {formErrors.first_name && (
-                      <p className="text-destructive text-sm">{formErrors.first_name}</p>
-                    )}
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="last_name">Last Name</Label>
-                    <Input
-                      id="last_name"
-                      name="last_name"
-                      value={formData.last_name}
-                      onChange={handleChange}
-                      className={formErrors.last_name ? "border-destructive" : ""}
-                    />
-                    {formErrors.last_name && (
-                      <p className="text-destructive text-sm">{formErrors.last_name}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required
-                    className={formErrors.email ? "border-destructive" : ""}
-                  />
-                  {formErrors.email && (
-                    <p className="text-destructive text-sm">{formErrors.email}</p>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    required
-                    className={formErrors.phone ? "border-destructive" : ""}
-                  />
-                  {formErrors.phone && (
-                    <p className="text-destructive text-sm">{formErrors.phone}</p>
-                  )}
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    name="address"
-                    value={formData.address || ""}
-                    onChange={handleChange}
-                    className={formErrors.address ? "border-destructive" : ""}
-                  />
-                  {formErrors.address && (
-                    <p className="text-destructive text-sm">{formErrors.address}</p>
-                  )}
-                </div>
+            {isEditing && displayUserData ? (
+              <div className="space-y-2">
+                  <Label>User (Read-only)</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">
+                      {displayUserData.first_name} {displayUserData.last_name} ({displayUserData.username}) - {displayUserData.email}
+                  </p>
               </div>
-            </TabsContent>
-            
-            {/* App Credentials Tab - Only show when creating a new customer */}
-            {!isEditing && (
-              <TabsContent value="credentials" className="p-0 pt-4">
-                <div className="grid gap-4">
-                  <div className="text-sm text-muted-foreground mb-2">
-                    <p>These credentials will allow the customer to access the mobile app.</p>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      name="username"
-                      value={formData.username || ""}
-                      onChange={handleChange}
-                      required
-                      className={formErrors.username ? "border-destructive" : ""}
-                    />
-                    {formErrors.username && (
-                      <p className="text-destructive text-sm">{formErrors.username}</p>
-                    )}
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="password">Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="password"
-                        name="password"
-                        type="password"
-                        value={formData.password || ""}
-                        onChange={handleChange}
-                        required
-                        className={formErrors.password ? "border-destructive" : ""}
-                      />
-                      <div className="absolute right-2 top-2.5 text-muted-foreground">
-                        <Key className="h-4 w-4" />
-                      </div>
-                    </div>
-                    {formErrors.password && (
-                      <p className="text-destructive text-sm">{formErrors.password}</p>
-                    )}
-                  </div>
-                </div>
-              </TabsContent>
+            ) : (
+              <div className="grid gap-2">
+                  <Label htmlFor="user_id">Select User</Label>
+                  <Select 
+                    onValueChange={handleSelectUserChange} 
+                    value={formData.user_id?.toString() || ""}
+                    disabled={isFetchingData || availableUsers.length === 0}
+                  >
+                      <SelectTrigger id="user_id" className="w-full">
+                          <SelectValue placeholder="Select an existing user..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                          {availableUsers.length > 0 ? (
+                              availableUsers.map(user => (
+                                  user && user.id ? (
+                                    <SelectItem key={user.id} value={user.id.toString()}>
+                                        {user.first_name} {user.last_name} ({user.username}) - {user.email}
+                                    </SelectItem>
+                                  ) : null
+                              ))
+                          ) : (
+                              <SelectItem value="no-users-placeholder" disabled>
+                                  {isFetchingData ? "Loading users..." : "No available users found"}
+                              </SelectItem>
+                          )}
+                      </SelectContent>
+                  </Select>
+                  {formErrors.user_id && <p className="text-sm text-red-500">{formErrors.user_id}</p>}
+              </div>
             )}
-          </Tabs>
-          
-          <DialogFooter className="mt-6">
-            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {isEditing ? "Update" : "Create"}
-            </Button>
-          </DialogFooter>
-        </form>
+
+            <div className="grid gap-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                name="phone"
+                value={formData.phone}
+                onChange={handleChange}
+                placeholder="+1 123 456 7890"
+                required
+              />
+              {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="address">Address (Optional)</Label>
+              <Textarea
+                id="address"
+                name="address"
+                value={formData.address || ''}
+                onChange={handleChange}
+                placeholder="123 Main St, Anytown, USA"
+              />
+              {formErrors.address && <p className="text-sm text-red-500">{formErrors.address}</p>}
+            </div>
+            
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading || isFetchingData}>
+                {loading ? "Saving..." : (isEditing ? "Save Changes" : "Create Customer")}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

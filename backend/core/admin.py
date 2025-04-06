@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.contrib import messages
 from django.shortcuts import render
 from django.core.exceptions import ValidationError
+import logging # Added for logging
 
 # Unregister User if already registered (by another app like django.contrib.auth)
 if admin.site.is_registered(User):
@@ -25,6 +26,8 @@ class UserAdmin(admin.ModelAdmin):
     search_fields = ['username', 'first_name', 'last_name', 'email']
     list_display = ['username', 'first_name', 'last_name', 'email', 'is_staff']
     list_filter = ['is_staff', 'is_active']
+
+logger = logging.getLogger(__name__) # Added logger instance
 
 class CustomerForm(forms.ModelForm):
     """Custom form for Customer that directly uses User model for name and email fields"""
@@ -54,7 +57,7 @@ class CustomerAdmin(admin.ModelAdmin):
     search_fields = ('user__first_name', 'user__last_name', 'user__email', 'phone')
     list_filter = ('created_at',)
     inlines = [CarInline]
-    autocomplete_fields = ['user']  # Use Django's built-in autocomplete
+    autocomplete_fields = ['user']
     
     def get_full_name(self, obj):
         return f"{obj.user.first_name} {obj.user.last_name}"

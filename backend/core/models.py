@@ -13,6 +13,12 @@ import logging
 from datetime import timedelta
 from django.conf import settings
 
+# --- Signal imports ---
+# Removed signal imports and handler from here
+# --- End Signal imports ---
+
+logger = logging.getLogger(__name__) # Ensure logger is defined
+
 User = settings.AUTH_USER_MODEL
 
 def validate_license_plate(value):
@@ -38,7 +44,12 @@ class Customer(models.Model):
     """
     Customer model representing garage clients
     """
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='customer')
+    user = models.OneToOneField(
+        User, 
+        on_delete=models.CASCADE, 
+        related_name='customer',
+        help_text=_('The user account associated with this customer.')
+    )
     phone = models.CharField(_('Phone Number'), max_length=20)
     address = models.TextField(_('Address'), blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -863,85 +863,6 @@ We've verified all fixes by:
 
 ## Next Steps
 
-1. **Data Analysis**: With service history and predictions working correctly, we can now analyze maintenance patterns.
-
-2. **Notification System**: Consider enhancing the notification system to alert vehicle owners of upcoming maintenance.
-
-3. **Reporting**: Develop reporting tools that use the now-reliable service history data.
-
-4. **Prediction Refinements**: Monitor the accuracy of the standardized 1 year/10,000 km intervals and adjust if needed.
-
-5. **UI Improvements**: Consider adding tooltips or help text in the UI to explain the "routine maintenance" checkbox.
-
-## Status Summary
-
-The service management system is now fully operational and reliable. The fixes and improvements we've implemented ensure that:
-
-- Service history is properly recorded
-- Service predictions use standardized intervals (1 year/10,000 km)
-- Average daily mileage is calculated accurately with minimal data
-- Car mileage is properly tracked for all service types
-- System maintenance is automated
-- Issues can be quickly diagnosed and fixed
-
-The system is now ready for production use with confidence that service tracking and prediction are working as intended.
-
-# ECAR Service Management System Status Update
-
-## Current Status
-
-The service management system is **fully operational**. We have successfully addressed all reported issues and made several improvements to ensure the system functions correctly in all scenarios.
-
-## Recent Fixes and Updates
-
-1. **Service History Creation**
-   - Fixed issues with service history not being created automatically when "routine maintenance" is checked
-   - Corrected logic to ensure service history creation for completed services
-   - Added enhanced error logging for troubleshooting
-
-2. **Service Prediction System**
-   - Enhanced with standardized intervals (1 year/10,000 km)
-   - Improved logic for calculating next service dates
-   - Added robust fallback predictions when mileage data is limited
-   - Fixed handling of same-day service records with different mileages
-
-3. **Average Daily Mileage Calculation**
-   - Refined to work with minimal data (as little as one service history record)
-   - Added support for proper calculation based on initial car mileage
-   - Implemented special handling for same-day activities
-   - Added comprehensive fallback system to ensure stable predictions
-   - **Fixed issue with mileage update removal**: System now correctly reverts to default values (50 km/day) for newly created cars when mileage updates are removed
-
-4. **Edge Case Handling**
-   - Added special detection for new cars with all activity on creation date
-   - Implemented safeguards against unrealistically high daily mileage calculations
-   - Added rate capping to ensure reasonable predictions
-   - Fixed same-day cumulative mileage change calculations
-   - Improved handling of removed data to maintain prediction stability
-
-## Verification Steps
-
-We have thoroughly tested these fixes and confirmed:
-- Service history is properly created for completed routine maintenance services
-- Service predictions are calculated correctly based on available data
-- Average daily mileage calculations appropriately handle edge cases
-- The system properly reverts to default values when mileage updates are removed from new cars
-- All changes are working correctly in the production environment
-
-## Recommended Actions
-
-1. **System Setup**
-   - Consider setting up a scheduled task to run `update_service_predictions` daily
-   - Run system checks periodically to ensure all predictions are up to date
-
-2. **Usage Guidelines**
-   - Ensure "routine maintenance" is checked for all regular service appointments
-   - Encourage recording of mileage updates for better prediction accuracy
-   - Be aware that new cars use default values (50 km/day) until sufficient history is available
-   - Understand that removing mileage updates from new cars will revert to default values
-
-## Next Steps
-
 1. **Data Analysis**
    - Monitor average daily mileage calculations for accuracy
    - Collect feedback on prediction accuracy from customers
@@ -987,3 +908,77 @@ I've fixed a critical issue in how the system calculates average daily mileage f
 This change significantly improves the accuracy of service predictions for pre-owned vehicles by ensuring the average daily mileage is based on actual usage since the car was added to the system, not its total lifetime mileage.
 
 I've also enhanced the logging to provide clearer information about how mileage calculations are being made, which will help with future diagnostics.
+
+# ECAR Project Status Update - April 6, 2024
+
+## Project Clone and Setup Status
+
+I've successfully cloned the ECAR project repository to the local environment. This is a comprehensive garage management system with the following components:
+
+### Current Repository Structure:
+- **Backend API**: Django + Django REST Framework (Python) - Located in `backend/`
+- **Database**: PostgreSQL with PgBouncer connection pooling, configured in Docker
+- **Web Admin**: React with TypeScript - Located in `web-admin/`
+- **Documentation**: Extensive documentation available in `docs/`
+
+### Initial Assessment:
+1. **Backend**: The Django backend appears well-structured with proper models, API endpoints, and serializers.
+2. **Frontend**: React-based admin interface using modern components (ShadCN/UI, Tailwind CSS).
+3. **Documentation**: Comprehensive documentation covering various aspects of the project.
+4. **DevOps**: Docker configuration with proper services setup.
+
+### Next Steps:
+1. Set up the local environment using Docker Compose
+2. Verify the backend API functionality using Swagger
+3. Test the frontend admin interface
+4. Review the existing implementation status in detail
+5. Plan the next development phase based on current project status
+
+### Dependencies Check:
+- Backend requirements are listed in `backend/requirements.txt`
+- Frontend dependencies are managed via npm in `web-admin/package.json`
+- Docker services are configured in `docker-compose.yml`
+
+I'll continue to update this document as I make progress with the project setup and development.
+
+## April 6, 2024 - Environment Setup Complete
+
+### Tasks Completed
+- Cloned project repository.
+- Configured Docker permissions in WSL.
+- Resolved backend migration issues.
+- Ensured Django Admin CSS loads correctly.
+- Created Django Admin superuser.
+- Updated Node.js to v22 LTS.
+- Resolved frontend dependency conflicts (React, date-fns).
+- Fixed missing `utils.ts` file for Shadcn components.
+- Successfully started backend services via Docker Compose.
+- Successfully started frontend Vite development server (`npm run dev -- --host`).
+
+### Current Status
+- **Backend:** Running at `http://localhost:8000` (API, Admin, Docs accessible).
+- **Frontend:** Running at `http://localhost:5173` (Web Admin interface accessible).
+- Development environment is fully operational.
+
+### Next Steps
+- Begin code review, bug fixing, or feature implementation as required.
+
+## April 6, 2024 - Customer Management Refactored
+
+### Tasks Completed
+- Refactored the frontend "Add Customer" dialog:
+  - Now requires selecting an existing, unassociated User instead of creating User details.
+  - Fetches available users from `/api/users/?has_customer=false`.
+  - Correctly handles API response format for user list.
+  - Fixed validation logic for user selection.
+- Corrected the frontend API call payload (`user_id` key) to match backend serializer expectations.
+- Verified that deleting a Customer via the frontend UI (API) now correctly deletes the associated User due to the explicit handling in `CustomerViewSet.destroy`.
+
+### Current Status
+- Customer creation via the frontend UI is fully functional and aligns with backend logic.
+- Customer deletion via the frontend UI correctly removes both Customer and associated User.
+- **Known Limitation:** Deleting a Customer directly via the Django Admin UI still does **not** automatically delete the associated User (likely due to `auditlog` interference). Manual deletion of the User is required if using the Admin for this action.
+
+### Next Steps
+- Continue testing other frontend sections (Vehicles, Services) against backend logic.
+- Implement any further required features or bug fixes.

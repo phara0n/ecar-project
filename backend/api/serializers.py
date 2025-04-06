@@ -6,6 +6,11 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from drf_yasg.utils import swagger_serializer_method
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Standard serializers
 class UserSerializer(serializers.ModelSerializer):
@@ -16,31 +21,18 @@ class UserSerializer(serializers.ModelSerializer):
         ref_name = 'UserFull'
 
 class CustomerSerializer(serializers.ModelSerializer):
-    user = UserSerializer()
+    user = UserSerializer(read_only=True)
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(),
+        source='user',
+        write_only=True
+    )
     
     class Meta:
         model = Customer
-        fields = ['id', 'user', 'phone', 'address', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'user_id', 'phone', 'address', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
         ref_name = 'CustomerFull'
-    
-    def create(self, validated_data):
-        user_data = validated_data.pop('user')
-        user = User.objects.create(**user_data)
-        customer = Customer.objects.create(user=user, **validated_data)
-        return customer
-    
-    def update(self, instance, validated_data):
-        user_data = validated_data.pop('user', None)
-        if user_data:
-            user_serializer = UserSerializer(instance.user, data=user_data, partial=True)
-            if user_serializer.is_valid():
-                user_serializer.save()
-        
-        instance.phone = validated_data.get('phone', instance.phone)
-        instance.address = validated_data.get('address', instance.address)
-        instance.save()
-        return instance
 
 class CarSerializer(serializers.ModelSerializer):
     customer_id = serializers.PrimaryKeyRelatedField(
@@ -49,6 +41,13 @@ class CarSerializer(serializers.ModelSerializer):
         write_only=True
     )
     customer = CustomerSerializer(read_only=True)
+    
+    average_daily_mileage = serializers.FloatField(read_only=True, allow_null=True)
+    next_service_date = serializers.DateField(read_only=True, allow_null=True)
+    next_service_mileage = serializers.IntegerField(read_only=True, allow_null=True)
+    last_service_date = serializers.DateField(allow_null=True, required=False)
+    last_service_mileage = serializers.IntegerField(allow_null=True, required=False)
+    initial_mileage = serializers.IntegerField(required=False)
     
     class Meta:
         model = Car
@@ -78,6 +77,10 @@ class CarSerializer(serializers.ModelSerializer):
         # Initial mileage should always be read-only for non-superusers
         if request and not request.user.is_superuser:
             self.fields['initial_mileage'].read_only = True
+
+    def validate_license_plate(self, value):
+        # Add custom validation if needed, or rely on model validation
+        return value
 
 class ServiceItemSerializer(serializers.ModelSerializer):
     service_id = serializers.PrimaryKeyRelatedField(
@@ -332,7 +335,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return user
 
 class ChangePasswordSerializer(serializers.Serializer):
-    old_password = serializers.CharField(required=True)
+    current_password = serializers.CharField(required=True)
     new_password = serializers.CharField(required=True, validators=[validate_password])
     confirm_password = serializers.CharField(required=True)
 

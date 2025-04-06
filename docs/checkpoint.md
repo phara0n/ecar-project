@@ -1,6 +1,50 @@
 # ECAR Project Checkpoint
 
-**Last Updated**: May 20, 2024
+**Last Updated**: April 6, 2024 (Evening)
+
+## Project Setup Complete - April 6, 2024
+
+- **Status**: Local development environment is fully operational.
+- **Backend**: Docker containers running, migrations applied, admin & API accessible.
+  - Services: Django, PostgreSQL, PgBouncer, Redis, Nginx.
+  - Access: `http://localhost:8000`
+- **Frontend**: Dependencies installed, development server running.
+  - Stack: React 18, Vite, TypeScript, Shadcn/ui.
+  - Access: `http://localhost:5173`
+- **Issues Resolved**:
+  - Docker permissions in WSL.
+  - Database migration conflicts.
+  - Django Admin static files.
+  - Frontend dependency conflicts (Node version, React, date-fns).
+  - Missing Shadcn `utils.ts` file.
+  - Vite server accessibility from host.
+
+## Project Status Overview - April 6, 2024
+
+### Project Clone and Repository Setup
+- Project has been successfully cloned to the local environment
+- Repository structure contains all expected components:
+  - Backend (Django/Python)
+  - Web Admin (React/TypeScript)
+  - Docker configuration
+  - Documentation
+
+### Current Development Status
+- Project is ready for local development setup
+- Docker Compose configuration is available for running the full stack
+- Comprehensive documentation exists for various aspects of the project
+
+### Next Steps
+1. Set up local development environment with Docker
+2. Test API endpoints functionality
+3. Test web admin interface
+4. Identify and prioritize next development tasks
+
+### Technical Review
+- Initial repository assessment shows well-structured components
+- Backend APIs are documented with Swagger
+- Frontend uses React with ShadCN/UI components
+- Docker infrastructure includes PostgreSQL with PgBouncer connection pooling
 
 ## Project Status Overview
 
@@ -630,3 +674,13 @@ No major issues are currently identified. The system is stable and functioning a
    - Interpreting default values for new vehicles
    - Proper procedure for correcting mileage errors
    - Setting accurate initial mileage for pre-owned vehicles
+
+## Customer Management Refactor Complete - April 6, 2024
+
+- **Frontend `CustomerDialog`:** Refactored to separate User selection (for create) from Customer field editing (phone, address). Aligns with backend `OneToOneField` logic.
+- **API Call:** Corrected frontend POST request payload (`user_id`) to match backend serializer (`CustomerSerializer` using `PrimaryKeyRelatedField`).
+- **User Fetching:** Implemented backend filter (`UserViewSet.get_queryset`) and frontend logic to fetch and display only unassociated Users for selection in the "Add Customer" dialog.
+- **Deletion Behavior:**
+  - **API/Frontend:** Confirmed working correctly. Deleting a `Customer` via the API/frontend UI successfully deletes the associated `User` due to the explicit handling in `CustomerViewSet.destroy`.
+  - **Django Admin:** Cascade deletion **still fails** when deleting `Customer` via Admin UI. Associated `User` is orphaned. This is a known limitation, likely due to `auditlog` interference. Manual User deletion is required if using Admin for Customer deletion.
+- **Status:** Customer CRUD functionality via the primary frontend interface is now working correctly and aligns with backend constraints.

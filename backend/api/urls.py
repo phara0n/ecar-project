@@ -11,7 +11,7 @@ from .views import (
     ServiceItemViewSet, InvoiceViewSet, NotificationViewSet,
     ChangePasswordView, get_user_data,
     RateLimitedTokenObtainPairView, RateLimitedTokenRefreshView,
-    admin_login, UserRegistrationView, MileageUpdateViewSet, 
+    admin_login, MileageUpdateViewSet,
     ServiceIntervalViewSet, ServiceHistoryViewSet
 )
 
@@ -58,6 +58,7 @@ ServiceIntervalViewSet.swagger_tags = ['vehicles']
 ServiceHistoryViewSet.swagger_tags = ['vehicles']
 
 # Authentication endpoints
+from .views import UserRegistrationView
 auth_patterns = [
     path('token/', RateLimitedTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', RateLimitedTokenRefreshView.as_view(), name='token_refresh'),

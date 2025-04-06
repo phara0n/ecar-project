@@ -99,6 +99,37 @@ api.interceptors.response.use(
   }
 );
 
+// User Service
+export const userService = {
+  // Fetches users who do not have an associated Customer profile
+  getUnassociated: () => api.get('/users/?has_customer=false'),
+
+  // Creates a new user
+  create: (data: any) => {
+    console.log("Creating user with data:", data);
+    return api.post('/users/', data);
+  },
+
+  // Gets the current logged-in user's details
+  getCurrentUser: () => {
+    console.log("Fetching current user details...");
+    return api.get('/users/me/'); // Common endpoint for current user
+  },
+  
+  // Updates the current logged-in user's profile
+  updateCurrentUser: (data: { first_name?: string; last_name?: string; email?: string }) => {
+      console.log("Updating current user profile with data:", data);
+      return api.patch('/users/me/', data); // Use PATCH for partial updates
+  },
+
+  // Changes the current logged-in user's password
+  changePassword: (data: { current_password: string; new_password: string }) => {
+      console.log("Attempting to change password...");
+      // Correct endpoint based on api/urls.py
+      return api.post('/auth/change-password/', data); 
+  }
+};
+
 // Auth services
 export const authService = {
   login: async (username: string, password: string) => {
@@ -132,13 +163,13 @@ export const customerService = USE_MOCK_API
   : {
     getAll: () => api.get('/customers/'),
     getById: (id: number) => api.get(`/customers/${id}/`),
-    create: (data: any) => {
+    create: (data: { user: number; phone: string; address: string | null }) => {
       console.log('Creating customer with data:', JSON.stringify(data, null, 2));
       return api.post('/customers/', data);
     },
-    update: (id: number, data: any) => {
+    update: (id: number, data: { phone: string; address: string | null }) => {
       console.log('Updating customer', id, 'with data:', JSON.stringify(data, null, 2));
-      // Try PATCH instead of PUT for updates
+      // Use PATCH for partial updates
       return api.patch(`/customers/${id}/`, data);
     },
     delete: (id: number) => api.delete(`/customers/${id}/`)

@@ -37,6 +37,7 @@ from io import StringIO
 from drf_yasg.utils import swagger_auto_schema, no_body
 from drf_yasg import openapi
 from auditlog.registry import auditlog
+import traceback # Added for detailed logging
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -93,10 +94,28 @@ class IsOwnerOrStaff(permissions.BasePermission):
 class UserViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
+    Added filtering to find users without an associated customer profile.
+    Added /me endpoint to get current user details.
     """
-    queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdminUser]
+    # Define filter backends to enable filtering
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['username', 'first_name', 'last_name', 'email']
+    ordering_fields = ['username', 'first_name', 'last_name', 'email']
+    ordering = ['username']
+
+    def get_queryset(self):
+        """ Optionally filters users based on whether they have a customer profile """
+        queryset = User.objects.all()
+        has_customer_param = self.request.query_params.get('has_customer')
+
+        if has_customer_param is not None:
+            has_customer = has_customer_param.lower() == 'true'
+            # Filter using the related_name 'customer' from Customer model
+            queryset = queryset.filter(customer__isnull=not has_customer)
+        
+        return queryset.order_by(*self.ordering) # Ensure consistent ordering
     
     def get_serializer_class(self):
         """
@@ -131,6 +150,35 @@ class UserViewSet(viewsets.ModelViewSet):
     @swagger_auto_schema(tags=['users'])
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
+
+    # --- Add the /me action --- 
+    @action(detail=False, methods=['get', 'patch', 'put'], url_path='me', permission_classes=[IsAuthenticated])
+    @swagger_auto_schema(
+        tags=['users'], 
+        operation_summary="Get or Update current user details",
+        operation_description="Retrieves (GET) or updates (PATCH/PUT) the profile information for the currently logged-in user.",
+        request_body=UserSerializer # Specify serializer for PUT/PATCH requests in Swagger
+    )
+    def current_user_me(self, request):
+        """
+        Handles GET (retrieve) and PATCH/PUT (update) for the current user.
+        """
+        user = request.user
+        
+        if request.method == 'GET':
+            serializer = self.get_serializer(user)
+            return Response(serializer.data)
+            
+        elif request.method in ['PATCH', 'PUT']:
+            # Use partial=True for PATCH to allow partial updates
+            partial = request.method == 'PATCH'
+            serializer = self.get_serializer(user, data=request.data, partial=partial)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)
+            
+        # Should not happen with methods=['get', 'patch', 'put']
+        return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 class CustomerViewSet(viewsets.ModelViewSet):
     """
@@ -174,7 +222,46 @@ class CustomerViewSet(viewsets.ModelViewSet):
         
     @swagger_auto_schema(tags=['customers'])
     def destroy(self, request, *args, **kwargs):
-        return super().destroy(request, *args, **kwargs)
+        try:
+            instance = self.get_object() # Get Customer
+            user_to_delete = instance.user # Get User
+            user_id_to_log = user_to_delete.id if user_to_delete else None
+            username_to_log = user_to_delete.username if user_to_delete else None
+            
+            logger.info(f"Attempting to delete Customer {instance.id} and associated User {user_id_to_log} ({username_to_log}).")
+            
+            user_deleted_successfully = False
+            if user_to_delete:
+                try:
+                    user_id = user_to_delete.id
+                    username = user_to_delete.username
+                    delete_result = user_to_delete.delete() # Call User delete
+                    logger.info(f"Explicit User.delete() call result: {delete_result}")
+                    user_deleted_successfully = True # Mark as successful if no exception
+                    logger.info(f"Explicitly deleted User {user_id} ({username}).")
+                except Exception as user_delete_error:
+                    logger.error(f"ERROR during explicit User.delete() for User {user_id_to_log}: {user_delete_error}")
+                    logger.error(traceback.format_exc()) # Log traceback for user delete error
+                    # Decide if we should proceed or fail here - let's fail for now
+                    raise user_delete_error # Re-raise the exception to stop the process
+            
+            # Only proceed to delete customer if user was successfully deleted or didn't exist
+            if user_deleted_successfully or not user_to_delete:
+                customer_id = instance.id
+                instance.delete() # Delete Customer
+                logger.info(f"Deleted Customer {customer_id}.")
+            else:
+                # This case should ideally not be reached if we re-raise the exception above
+                logger.error(f"Skipping Customer {instance.id} deletion because associated User {user_id_to_log} deletion failed.")
+                return Response({"detail": "Failed to delete associated user, customer not deleted."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            return Response(status=status.HTTP_204_NO_CONTENT)
+            
+        except Exception as e:
+            # Catch exceptions from get_object or customer instance.delete() or re-raised user_delete_error
+            logger.error(f"Overall error during deletion of Customer {kwargs.get('pk')}:")
+            logger.error(traceback.format_exc()) # Log full traceback
+            return Response({"detail": f"Error occurred during deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def get_queryset(self):
         """
@@ -1722,59 +1809,74 @@ def register_user(request):
         }, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class ChangePasswordView(generics.UpdateAPIView):
+class ChangePasswordView(generics.GenericAPIView):
     """
-    API endpoint for changing password
+    An endpoint for changing password. Accepts POST requests.
     """
     serializer_class = ChangePasswordSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    @ratelimit(key='user', rate='3/h', method='PUT', block=True)
-    @ratelimit(key='user', rate='3/h', method='PATCH', block=True)
-    def update(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        user = request.user
-        if not user.check_password(serializer.data.get('old_password')):
-            return Response(
-                {"old_password": _("Wrong password")},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        user.set_password(serializer.data.get('new_password'))
-        user.save()
-        return Response(
-            {"detail": _("Password updated successfully")},
-            status=status.HTTP_200_OK
-        )
+    permission_classes = (IsAuthenticated,)
 
-class RateLimitedTokenObtainPairView(TokenObtainPairView):
+    def get_object(self):
+        return self.request.user
+
+    @swagger_auto_schema(
+        tags=['auth'],
+        operation_summary="Change User Password",
+        operation_description="Allows authenticated users to change their own password."
+    )
+    def post(self, request, *args, **kwargs):
+        """Handle password change requests via POST."""
+        self.object = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+
+        if serializer.is_valid():
+            # Check old password
+            if not self.object.check_password(serializer.validated_data.get("current_password")):
+                logger.warning(f"Password change attempt failed for user {self.object.username}: Incorrect current password.")
+                return Response({"current_password": [_("Wrong password.")]}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Set new password
+            self.object.set_password(serializer.validated_data.get("new_password"))
+            self.object.save()
+            logger.info(f"Password changed successfully for user {self.object.username}.")
+            
+            response_data = {
+                'status': 'success',
+                'code': status.HTTP_200_OK,
+                'message': _('Password updated successfully'),
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+        else:
+            logger.warning(f"Password change attempt failed for user {self.object.username}: Invalid data - {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# --- Token Views ---
+
+# INSERT THE FOLLOWING CLASS DEFINITION HERE:
+class CustomTokenObtainPairView(TokenObtainPairView):
     """
-    Takes a set of user credentials and returns an access and refresh JSON web
-    token pair to prove the authentication of those credentials.
-    
-    Rate limited to prevent brute force attacks.
+    Custom TokenObtainPairView that uses the CustomTokenObtainPairSerializer.
     """
     serializer_class = CustomTokenObtainPairSerializer
-    method = "POST"
-    
-    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
+# END OF INSERTED CODE
+
+# Define RateLimitedTokenObtainPairView using the restored class
+class RateLimitedTokenObtainPairView(CustomTokenObtainPairView): # Now this should work
+    """
+    Rate limited TokenObtainPairView.
+    """
+    throttle_scope = 'login'
+    @swagger_auto_schema(tags=['auth'])
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 class RateLimitedTokenRefreshView(TokenRefreshView):
-    """
-    Takes a refresh type JSON web token and returns an access type JSON web
-    token if the refresh token is valid.
-    
-    Rate limited to prevent brute force attacks.
-    """
-    method = "POST"
-    
-    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
-    def dispatch(self, *args, **kwargs):
-        return super().dispatch(*args, **kwargs)
+   # ... existing refresh view ...
+   throttle_scope = 'token_refresh'
+   @swagger_auto_schema(tags=['auth'])
+   def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 @csrf_exempt
 @swagger_auto_schema(
@@ -1899,102 +2001,6 @@ def admin_login(request):
             {"error": "Invalid credentials"},
             status=status.HTTP_401_UNAUTHORIZED
         )
-
-class CustomTokenObtainPairView(TokenObtainPairView):
-    """
-    Takes a set of user credentials and returns an access and refresh JSON web
-    token pair to prove the authentication of those credentials.
-    
-    Rate limited to prevent brute force attacks.
-    """
-    serializer_class = CustomTokenObtainPairSerializer
-    
-    @swagger_auto_schema(
-        operation_summary="Obtain JWT token pair",
-        operation_description="Authenticates with username and password to obtain a JWT token pair (access and refresh tokens)",
-        tags=['authentication'],
-        responses={
-            200: openapi.Response(
-                description="Successful authentication",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'access': openapi.Schema(type=openapi.TYPE_STRING, description="JWT access token"),
-                        'refresh': openapi.Schema(type=openapi.TYPE_STRING, description="JWT refresh token"),
-                        'user': openapi.Schema(type=openapi.TYPE_OBJECT, description="User information")
-                    }
-                ),
-                examples={
-                    'application/json': {
-                        'access': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-                        'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-                        'user': {
-                            'id': 1,
-                            'username': 'johndoe',
-                            'email': 'john@example.com',
-                            'is_staff': False
-                        }
-                    }
-                }
-            ),
-            401: "Invalid credentials"
-        }
-    )
-    @method_decorator(ratelimit(key='ip', rate='5/m', method='POST', block=True))
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-class UserRegistrationView(generics.CreateAPIView):
-    """
-    API endpoint for user registration
-    """
-    serializer_class = UserRegistrationSerializer
-    permission_classes = [permissions.AllowAny]
-    
-    @swagger_auto_schema(
-        operation_summary="Register new user",
-        operation_description="Register a new user account with username, email, password, and optional profile information",
-        tags=['authentication'],
-        responses={
-            201: openapi.Response(
-                description="Successfully registered",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'user': openapi.Schema(type=openapi.TYPE_OBJECT, description="User data"),
-                        'token': openapi.Schema(type=openapi.TYPE_STRING, description="Access token"),
-                        'message': openapi.Schema(type=openapi.TYPE_STRING, description="Success message")
-                    }
-                ),
-                examples={
-                    'application/json': {
-                        'user': {
-                            'username': 'johndoe',
-                            'email': 'john@example.com',
-                            'first_name': 'John',
-                            'last_name': 'Doe'
-                        },
-                        'token': 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...',
-                        'message': 'User registered successfully'
-                    }
-                }
-            ),
-            400: "Invalid data provided"
-        }
-    )
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-        
-        # Generate token for the user
-        refresh = RefreshToken.for_user(user)
-        
-        return Response({
-            'user': UserSerializer(user).data,
-            'token': str(refresh.access_token),
-            'message': _('User registered successfully')
-        }, status=status.HTTP_201_CREATED)
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
@@ -2381,3 +2387,38 @@ class ServiceHistoryViewSet(viewsets.ModelViewSet):
         car.update_service_predictions()
         
         return service_history
+
+# --- Authentication Views ---
+
+# RESTORE UserRegistrationView definition
+class UserRegistrationView(generics.CreateAPIView):
+    """
+    API endpoint for user registration.
+    Handles POST requests to create new users.
+    """
+    queryset = User.objects.all()
+    permission_classes = (permissions.AllowAny,) # Allow anyone to register
+    serializer_class = UserRegistrationSerializer
+    throttle_scope = 'register' # Apply specific rate limit
+    
+    @swagger_auto_schema(
+        tags=['auth'],
+        operation_summary="Register New User",
+        operation_description="Creates a new user account."
+    )
+    def post(self, request, *args, **kwargs):
+        """Handle user registration with password validation and hashing."""
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            logger.info(f"User registered successfully: {user.username}")
+            # Return a simple success message upon registration
+            return Response({
+                "message": _("User registered successfully. Please login."),
+                "user_id": user.id,
+                "username": user.username
+            }, status=status.HTTP_201_CREATED)
+        else:
+            logger.warning(f"User registration failed: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# END of restored UserRegistrationView
