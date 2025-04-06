@@ -33,3 +33,4 @@ setuptools==70.3.0
 six==1.17.0
 sqlparse==0.5.3
 urllib3==2.3.0
+whitenoise[brotli]

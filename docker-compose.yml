@@ -56,7 +56,8 @@ services:
     command: >
       bash -c "/wait &&
                python manage.py migrate &&
-               python manage.py collectstatic --noinput &&
+               # Run collectstatic now that whitenoise is handling static files
+               python manage.py collectstatic --noinput && 
                gunicorn ecar_backend.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     env_file:
       - ./.env
@@ -71,8 +72,12 @@ services:
       - CONN_MAX_AGE=600
       - DJANGO_SETTINGS_MODULE=ecar_backend.settings
     volumes:
-      - static_volume:/app/staticfiles
+      # Only media volume needed by Django itself
+      # - static_volume:/app/staticfiles # Not strictly needed by Gunicorn
       - media_volume:/app/media
+    ports:
+      # Expose port 8000 directly since Nginx is removed
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -82,21 +87,8 @@ services:
         condition: service_started
     restart: always
 
-  nginx:
-    image: nginx:1.25-alpine
-    restart: always
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
-      - static_volume:/app/staticfiles
-      - media_volume:/app/media
-      - ./web-admin-dist:/usr/share/nginx/html/admin:ro
-    depends_on:
-      - backend
-
 volumes:
   postgres_data:
   redis_data:
-  static_volume:
+  # static_volume: # Not strictly needed if backend doesn't serve static files directly
   media_volume: 
