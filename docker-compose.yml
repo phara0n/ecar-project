@@ -11,8 +11,6 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_DB=${DB_NAME}
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -35,7 +33,7 @@ services:
       - PGBOUNCER_POOL_MODE=transaction
       - PGBOUNCER_MAX_CLIENT_CONN=100
       - PGBOUNCER_DEFAULT_POOL_SIZE=20
-      - PGBOUNCER_AUTH_TYPE=trust
+      - PGBOUNCER_AUTH_TYPE=md5
       - PGBOUNCER_DATABASE=${DB_NAME:-ecar_db}
       - PGBOUNCER_ADMIN_USERS=postgres,${DB_USER:-ecar_user}
       - PGBOUNCER_IGNORE_STARTUP_PARAMETERS=extra_float_digits
@@ -46,8 +44,6 @@ services:
     image: redis:7.2-alpine
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -55,11 +51,13 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     command: >
-      bash -c "/wait && 
-      python manage.py migrate && 
-      python manage.py runserver 0.0.0.0:8000"
+      bash -c "/wait &&
+               python manage.py migrate &&
+               python manage.py collectstatic --noinput &&
+               gunicorn ecar_backend.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     env_file:
       - ./.env
     environment:
@@ -70,27 +68,30 @@ services:
       - REDIS_URL=redis://redis:6379/1
       - DB_HOST=pgbouncer
       - DB_PORT=6432
-      - CONN_MAX_AGE=0
+      - CONN_MAX_AGE=600
+      - DJANGO_SETTINGS_MODULE=ecar_backend.settings
     volumes:
-      - ./backend:/app
       - static_volume:/app/staticfiles
       - media_volume:/app/media
     depends_on:
-      - db
-      - redis
-      - pgbouncer
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
     restart: always
-    ports:
-      - "8000:8000"
 
   nginx:
-    image: nginx:1.25
+    image: nginx:1.25-alpine
+    restart: always
     ports:
       - "80:80"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - static_volume:/static
-      - media_volume:/media
+      - ./nginx/prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - ./web-admin-dist:/usr/share/nginx/html/admin:ro
     depends_on:
       - backend
 

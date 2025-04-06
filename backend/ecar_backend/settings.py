@@ -25,10 +25,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-sf&5=mdd7n16u!co7v&i8)ygr4c16x(_g7$k=cjvyuqqm!2-kh')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Read DEBUG from environment variable, default to False for safety
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-# Update ALLOWED_HOSTS to include 'backend' for Docker container access
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0', 'backend']
+# Update ALLOWED_HOSTS to read from environment variable
+# Default to localhost for safety if not set, split by comma
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -45,7 +47,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'auditlog',
-    'debug_toolbar',
+    # 'debug_toolbar', # Conditionally included below
     'rest_framework_simplejwt.token_blacklist',
     'rest_framework_simplejwt',
     'django_filters',
@@ -57,18 +59,30 @@ INSTALLED_APPS = [
     'utils',
 ]
 
+# Conditionally add debug toolbar only if DEBUG is True
+if DEBUG:
+    INSTALLED_APPS.append('debug_toolbar')
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # Ensure CorsMiddleware comes early
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'auditlog.middleware.AuditlogMiddleware',
-    'debug_toolbar.middleware.DebugToolbarMiddleware',
+    # 'debug_toolbar.middleware.DebugToolbarMiddleware', # Conditionally included below
 ]
+
+# Conditionally add debug toolbar middleware only if DEBUG is True
+if DEBUG:
+    MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
+    # Required for Debug Toolbar
+    INTERNAL_IPS = [
+        "127.0.0.1",
+    ]
 
 ROOT_URLCONF = 'ecar_backend.urls'
 
@@ -239,12 +253,18 @@ SIMPLE_JWT = {
 }
 
 # CORS Settings
-CORS_ALLOW_ALL_ORIGINS = True  # Only for development
-# For production, use specific origins:
-# CORS_ALLOWED_ORIGINS = [
-#     "https://ecar.example.com",
-#     "http://localhost:8000",
-# ]
+# CORS_ALLOW_ALL_ORIGINS = True  # Disable this for production
+CORS_ALLOW_ALL_ORIGINS = False # Set to False for production
+
+# For production, use specific origins read from environment variable
+CORS_ALLOWED_ORIGINS = [origin for origin in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if origin]
+
+# Optional: Allow credentials (cookies, authorization headers)
+# CORS_ALLOW_CREDENTIALS = True
+
+# Optional: Define allowed methods and headers if needed
+# CORS_ALLOW_METHODS = [...]
+# CORS_ALLOW_HEADERS = [...]
 
 # Rate limiting
 RATELIMIT_ENABLE = True
