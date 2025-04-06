@@ -1,6 +1,6 @@
 # ECAR Project Checkpoint
 
-**Last Updated**: May 27, 2024
+**Last Updated**: May 27, 2024 (Evening)
 
 ## Project Setup Complete - April 6, 2024
 
@@ -26,28 +26,39 @@
 - Repository: `phara0n/ecar-project` on GitHub.
 
 ### Git Status
-- **Main Branch:** All recent changes (settings dialog, i18n, backend fixes, docs) have been committed (`102d990`) and pushed to `origin/main`.
-- **Dev Branch:** Fully synchronized with `main` via a fast-forward merge and pushed to `origin/dev`.
-- **Synchronization:** Both `main` and `dev` branches are up-to-date locally and on the remote repository.
+- **Main Branch:** Synced with dev (up to commit `102d990`).
+- **Dev Branch:** Contains latest code including production configurations (`f86972f`) and WhiteNoise setup. Pushed to `origin/dev`.
+- **Synchronization:** `dev` branch is the most up-to-date.
 
 ### Local Development Environment
-- **Status**: Fully operational.
-- **Backend**: Docker containers (Django, PostgreSQL, PgBouncer, Redis, Nginx) running.
+- **Status**: Backend operational. Frontend removed.
+- **Backend**: Docker containers (Django, PostgreSQL, PgBouncer, Redis) running locally.
   - Access: `http://localhost:8000`
-- **Frontend**: Vite development server running.
-  - Stack: React 18, Vite, TypeScript, Shadcn/ui.
-  - Access: `http://localhost:5173`
+- **Frontend**: `web-admin` directory has been removed. Needs rebuild.
+
+### **VPS Deployment Status (Backend Only)**
+- **Status:** Operational.
+- **Host:** User's Debian VPS.
+- **Environment:** Docker Compose stack (`db`, `pgbouncer`, `redis`, `backend`).
+- **Configuration:** Using production `.env` file, `DEBUG=False`, Gunicorn, WhiteNoise for static files.
+- **Access:** `http://<vps_ip>:8000/` (API and Django Admin).
+- **Superuser:** Created via `createsuperuser`.
+- **Frontend:** Not deployed.
+- **HTTPS:** Not yet configured.
 
 ### Current Development Status
-- Project is ready for local development setup
-- Docker Compose configuration is available for running the full stack
-- Comprehensive documentation exists for various aspects of the project
+- Backend API deployed and functional on VPS.
+- Frontend requires complete rebuild.
+- Local environment reflects backend-only setup.
 
 ### Next Steps
-1. Set up local development environment with Docker
-2. Test API endpoints functionality
-3. Test web admin interface
-4. Identify and prioritize next development tasks
+1.  **Frontend:** Rebuild the `web-admin` React application from scratch.
+2.  **Deployment (Full):**
+    *   Deploy the built frontend.
+    *   Configure Nginx as reverse proxy.
+    *   Set up HTTPS (Let's Encrypt/Certbot).
+    *   Configure DNS.
+3.  **Features:** Continue development based on project roadmap (Mobile App, Admin features etc.).
 
 ### Technical Review
 - Initial repository assessment shows well-structured components

@@ -1,5 +1,32 @@
 # ECAR Project Update for Team
 
+## May 27, 2024 Update - Backend VPS Deployment
+
+Successfully deployed the backend services (Django API, PostgreSQL, Redis, PgBouncer) to the production VPS using Docker Compose.
+
+### Deployment Steps:
+1.  **Installed Docker:** Docker Engine and Docker Compose plugin were installed on the Debian VPS.
+2.  **Cloned Repository:** Cloned the `phara0n/ecar-project` repository onto the VPS and checked out the `dev` branch.
+3.  **Configured Environment:** Created the `.env` file with production secrets (DB credentials, SECRET_KEY) and settings (`ALLOWED_HOSTS`, `DEBUG=False`).
+4.  **Adjusted Docker Compose:** Modified `docker-compose.yml` for backend-only deployment (removed Nginx, exposed backend port 8000).
+5.  **Configured WhiteNoise:** Added `whitenoise` library and configured it in `settings.py` to enable Django to serve its own static files (for Admin, Swagger UI) in production.
+6.  **Built & Ran Containers:** Successfully built the Docker images (`docker compose build`) and started the services (`docker compose up -d`).
+7.  **Troubleshooting:** Resolved YAML errors in `docker-compose.yml` (duplicate version tag, missing `media_volume` definition) and Git divergence issues (`git reset --hard origin/dev`).
+8.  **Verification:** Confirmed services are running (`docker compose ps`) and the API is accessible (e.g., Swagger UI at `/api/docs/`).
+9.  **Created Superuser:** Created the initial superuser via `docker compose exec backend python manage.py createsuperuser`.
+
+### Current Status:
+-   The backend API is live and accessible on the VPS at `http://<your_vps_ip>:8000/`.
+-   The database, cache, and connection pooler are running.
+-   Static files for Django Admin and Swagger UI are served correctly by WhiteNoise.
+-   The frontend (`web-admin`) has been removed locally and needs to be rebuilt and deployed separately.
+
+### Next Steps (Deployment):
+-   Set up HTTPS using Nginx and Certbot/Let's Encrypt.
+-   Rebuild and deploy the frontend application.
+-   Configure DNS for production domains.
+-   Review and tighten VPS firewall rules.
+
 ## May 27, 2024 Update - Git Synchronization
 
 Successfully synchronized the `main` and `dev` branches on the `phara0n/ecar-project` repository.
