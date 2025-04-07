@@ -4,7 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.contrib.auth.models import User
-from django.db.models import Q, Sum, F, DecimalField, Case, When, Max
+from django.db.models import Q, Sum, F, DecimalField, Case, When, Max, Count
 from django.db.models.functions import Coalesce
 from core.models import Customer, Car, Service, ServiceItem, Invoice, Notification, ServiceInterval, MileageUpdate, ServiceHistory
 from .serializers import (
@@ -188,17 +188,40 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = CustomerSerializer  
     permission_classes = [IsAuthenticated]
     
+    filterset_fields = ['user__email', 'phone', 'address']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'phone']
+    ordering_fields = ['user__last_name', 'user__email', 'created_at', 'vehicle_count']
+    ordering = ['-created_at']
+    
     def get_serializer_class(self):
         if getattr(self, 'swagger_fake_view', False):
             from .swagger_utils import get_docs_serializer
             return get_docs_serializer('CustomerDocsSerializer')
         return self.serializer_class
     
-    queryset = Customer.objects.all()
-    filterset_fields = ['user__email', 'phone', 'address']
-    search_fields = ['user__first_name', 'user__last_name', 'user__email', 'phone']
-    ordering_fields = ['user__last_name', 'user__email', 'created_at']
-    ordering = ['-created_at']
+    def get_queryset(self):
+        """
+        Get the base queryset and annotate with vehicle count.
+        Apply permission filtering.
+        """
+        user = self.request.user
+        
+        # Start with base queryset and select related user to optimize
+        queryset = Customer.objects.select_related('user')
+        
+        # Annotate with the count of related vehicles
+        # Assuming the related name from Car model to Customer is 'cars' (default: car_set)
+        # Verify this in core/models.py if it fails
+        queryset = queryset.annotate(vehicle_count=Count('cars')) # Corrected related name
+        
+        # Apply permission filtering based on user role
+        if not user.is_staff:
+            # Non-staff users can only see their own customer profile
+            queryset = queryset.filter(user=user)
+        
+        # Apply ordering (use the ordering defined on the viewset)
+        ordering = self.ordering or []
+        return queryset.order_by(*ordering)
     
     @swagger_auto_schema(tags=['customers'])
     def list(self, request, *args, **kwargs):
@@ -262,29 +285,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
             logger.error(f"Overall error during deletion of Customer {kwargs.get('pk')}:")
             logger.error(traceback.format_exc()) # Log full traceback
             return Response({"detail": f"Error occurred during deletion: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    def get_queryset(self):
-        """
-        Filter customers based on user permissions and search parameters.
-        Regular users only see their own profile, while staff can see all customers
-        and perform searches.
-        """
-        queryset = Customer.objects.all()
-        
-        if not self.request.user.is_staff:
-            return Customer.objects.filter(user=self.request.user)
-            
-        # Add search functionality for staff users
-        search_query = self.request.query_params.get('search', None)
-        if search_query:
-            queryset = queryset.filter(
-                Q(user__first_name__icontains=search_query) | 
-                Q(user__last_name__icontains=search_query) | 
-                Q(user__email__icontains=search_query) | 
-                Q(phone__icontains=search_query)
-            )
-            
-        return queryset
     
     @method_decorator(cache_page(settings.CACHE_TTL))
     @method_decorator(vary_on_cookie)

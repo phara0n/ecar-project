@@ -1,3 +1,106 @@
+# ECAR Project Summary for Mehdi
+
+**Date:** 2025-04-08
+
+**Current Focus:** Admin Web Frontend (`/home/ecar/ecar-project/admin-web`)
+
+**Recent Actions:**
+
+*   **Backend Fixes & Features:**
+    *   Corrected `CustomerViewSet` to use `Count('cars')` for accurate vehicle counts.
+    *   Ensured `CustomerSerializer` includes `vehicle_count`.
+    *   Resolved `KeyError` in `ServiceSerializer` related to `car_id`.
+    *   Troubleshot Docker build/restart process.
+*   **Frontend (Customers & Vehicles):**
+    *   Implemented `CustomersPage` using the refactored `GenericDataTable`.
+    *   Updated `AddVehicleDialog`:
+        *   Customer dropdown now shows full names.
+        *   Submission payload sends `customer_id` correctly.
+        *   Renamed "Mileage" to "Initial Mileage" and made it required.
+*   **API Slice (`apiSlice.ts`):**
+    *   Added new endpoints: `getMe` (fetch current user), `getCar` (fetch single vehicle), `updateCar` (update vehicle).
+    *   Added supporting types: `UserDetail`, `UpdateVehicleRequest`.
+*   **Next Step Identified:** Create `EditVehicleDialog.tsx` component, which will fetch user/vehicle data and disable the `initial_mileage` field for non-staff users.
+*   Updated documentation.
+
+**Overall Status:**
+
+*   **Admin Web:**
+    *   Core structure (Vite, React 19, TS, Tailwind v4, ShadCN, Redux, RTK Query) in place.
+    *   **Login Page:** Functional.
+    *   **Dashboard Page:** UI shell exists, uses static data. Needs API integration.
+    *   **Customers Page:** Implemented using `GenericDataTable` and API data (including vehicle counts).
+    *   **Vehicles Page:** Displays vehicles using `GenericDataTable`. `AddVehicleDialog` is functional (with recent fixes/changes).
+*   **Backend:** Running with Gunicorn/Nginx. API endpoints updated and corrected.
+*   **Mobile App:** Not started.
+
+**Next Steps (Admin Web):**
+
+1.  **Create `EditVehicleDialog.tsx` component.**
+    *   Fetch specific vehicle data using `useGetCarQuery`.
+    *   Fetch current user data using `useGetMeQuery`.
+    *   Pre-fill form fields.
+    *   Implement logic to disable `initial_mileage` input based on `userData.is_staff`.
+    *   Handle form submission using `useUpdateCarMutation`.
+2.  **Connect Edit Action:** Update `vehicle-columns.tsx` to open the `EditVehicleDialog` from the row actions menu.
+3.  Implement other dashboard elements/API connections.
+4.  Implement token refresh mechanism.
+5.  Add logout functionality.
+
+**Notes:**
+
+*   Frontend dev server: `http://localhost:5173`
+*   Backend access via Nginx: `http://localhost`
+*   API requests proxied via Vite: `/api` -> `http://localhost/api`
+*   Refer to `coding.mdc`, `frontend.mdc`, and `project.mdc` for requirements.
+
+---
+*Older updates below may refer to previous project iterations or backend status.*
+
+# Project Status Update for Mehdi
+
+## Current Situation
+
+We have successfully re-initialized the `webadmin` project using Vite, React 19, TypeScript, and Tailwind CSS v4. The core setup, including path aliases and Tailwind configuration, is complete according to the ShadCN UI documentation. The `shadcn init` command has been run successfully. The `dashboard-01` component has been added.
+
+## Next Steps
+
+1.  Add the `login-01` component using ShadCN CLI.
+2.  Set up basic routing (`react-router-dom`).
+3.  Implement the Login page using the `login-01` component.
+4.  Implement the Dashboard page using the `dashboard-01` component structure.
+5.  Start implementing specific application features and state management.
+
+# Project Status for Mehd
+
+**Date:** $(date +'%Y-%m-%d')
+
+## Current Status (Web Admin Rebuild)
+
+*   Initialized the new frontend project (`webadmin`) with Vite, React, TS, Tailwind v4, and ShadCN UI.
+*   Installed core dependencies: Redux Toolkit, React-Redux, React Router.
+*   Established basic project structure (`src/app`, `src/components`, `src/features`, etc.).
+*   Set up Redux store and base RTK Query API slice.
+*   Configured React Router with public (Login) and protected (Dashboard) routes.
+*   Created placeholder components for Login page, Dashboard layout, and Dashboard home page.
+*   Updated documentation files (`checkpoint.md`, `setup_summary.md`).
+*   Initial Git commit created for the `webadmin` project setup.
+
+## Next Steps
+
+*   Implement authentication:
+    *   Create Redux slices (`authApiSlice`, `authSlice`).
+    *   Build login form and connect to API.
+    *   Implement token handling and protected routes properly.
+    *   Add logout functionality.
+*   Refine `DashboardLayout` with ShadCN components.
+*   Begin building core feature modules (Customers, Vehicles, Services).
+*   Commit structural changes.
+
+---
+
+*Older updates below may refer to previous project iterations or backend status.*
+
 # ECAR Project Update for Team
 
 ## May 27, 2024 Update - Backend VPS Deployment

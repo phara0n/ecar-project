@@ -1,6 +1,114 @@
-# ECAR Project Checkpoint
+# ECAR Project Development Checkpoint
 
-**Last Updated**: May 27, 2024 (Evening)
+**Date:** 2025-04-08
+
+**Current Phase:** Admin Web Frontend Development - Building Customers/Vehicles Section
+
+**Focus Area:** `/home/ecar/ecar-project/admin-web`
+
+**Key Activities (Current Session):**
+
+*   Configured backend for development (`runserver`, direct DB connection).
+*   Re-configured backend for production-like setup with Gunicorn and Nginx.
+*   Created Nginx configuration (`nginx/nginx.conf`).
+*   Updated `docker-compose.yml` to include Nginx, reverted backend to Gunicorn, adjusted port mappings and volumes.
+*   Created base RTK Query API slice (`store/apiSlice.ts`) with login mutation.
+*   Integrated API slice into Redux store (`store/index.ts`).
+*   Verified `authSlice.ts` structure.
+*   Implemented login logic in `src/components/login-form.tsx` (state, API call, Redux dispatch, toasts, navigation).
+*   Added `Toaster` component to `src/App.tsx`.
+*   Adjusted `login-form.tsx` and `apiSlice.ts` to use `username` instead of `email`.
+*   Diagnosed and resolved connection issues (Firewall, proxy, `baseUrl`).
+*   Configured Vite proxy in `vite.config.ts` to forward `/api` requests to `http://localhost:80`.
+*   Confirmed Login functionality is working.
+*   Added Customer CRUD endpoints (`getCustomers`, `createCustomer`, `updateCustomer`, `deleteCustomer`) to `apiSlice.ts`.
+*   Refactored `DataTable` into reusable `GenericDataTable` component (`components/data-table.tsx`).
+*   Implemented Customers page (`pages/CustomersPage.tsx`) using `GenericDataTable`.
+*   Updated backend `CustomerViewSet` (`api/views.py`) to annotate `vehicle_count` using `Count('cars')` (fixed `FieldError`).
+*   Updated backend `CustomerSerializer` (`api/serializers.py`) to include read-only `vehicle_count` field.
+*   Resolved backend `KeyError: 'car_id'` in `ServiceSerializer` (`api/serializers.py`).
+*   Troubleshot Docker build/restart process to ensure backend changes were reflected.
+*   Updated frontend `AddVehicleDialog` (`components/add-vehicle-dialog.tsx`):
+    *   Changed customer dropdown to show full name instead of ID.
+    *   Fixed submission to send `customer_id` (number) instead of `customer` (string).
+    *   Renamed "Mileage" field to "Initial Mileage" and made it required.
+*   Added `getMe`, `getCar`, `updateCar` endpoints and `UserDetail`, `UpdateVehicleRequest` types to `apiSlice.ts` in preparation for Edit Vehicle functionality.
+*   Identified need to create `EditVehicleDialog.tsx` component next, including logic to disable `initial_mileage` for non-staff users.
+*   Updated `docs/for_mehd.md` and this file (`docs/checkpoint.md`).
+
+**Dependencies Status (Admin Web):**
+
+*   **Core:** React 19, Vite, TypeScript
+*   **Styling:** Tailwind CSS v4, ShadCN/ui
+*   **State Management:** Redux Toolkit, React-Redux, RTK Query
+*   **Routing:** React Router DOM
+*   **UI Components/Libraries:** Tanstack React Table, Recharts, Sonner
+*   **Build/Config:** postcss, autoprefixer, vite-tsconfig-paths
+*   **Node/NPM:** Assumed functional.
+
+**Admin Web (React + Vite):**
+
+*   Status: Core setup complete. Login page UI and logic are implemented and functional, connecting to the backend via Nginx proxy.
+*   Key Files:
+    *   `src/pages/LoginPage.tsx`, `src/components/login-form.tsx` (Functional)
+    *   `src/store/apiSlice.ts` (Updated `baseUrl`)
+    *   `vite.config.ts` (Added proxy)
+    *   `docker-compose.yml` (Includes Nginx)
+    *   `nginx/nginx.conf` (Created)
+    *   `src/pages/HomePage.tsx`, `src/components/section-cards.tsx`, etc. (UI shell using static data)
+*   Tasks Pending:
+    1.  Replace example data in `HomePage` (`/src/app/dashboard/data.json`) with data fetched from the API using RTK Query.
+    2.  Connect `SectionCards`, `DataTable`, `ChartAreaInteractive` and other dashboard elements to relevant API endpoints.
+    3.  Implement token refresh logic.
+    4.  Implement logout functionality.
+    5.  Build out other required admin sections (Customer, Vehicle, Service management).
+
+**Other Project Areas:**
+
+*   Backend (Django): Running with Gunicorn behind Nginx. Database connection verified. Django Admin accessible.
+*   Mobile App (React Native): Not started.
+
+**Notes:**
+
+*   Frontend dev server runs on `http://localhost:5173`.
+*   Backend is accessed via Nginx on `http://localhost` (port 80).
+*   Vite proxies frontend `/api` requests to backend `http://localhost:80/api`.
+
+## Project: webadmin (Frontend)
+
+### Setup Status
+
+-   **Framework:** Vite + React 19 + TypeScript
+-   **Styling:** Tailwind CSS v4 + ShadCN UI (Neutral theme, Dark mode enabled)
+-   **Initialization:**
+    -   Vite project created (`npm create vite@latest . --template react-ts`)
+    -   Base dependencies installed (`npm install`)
+    -   Tailwind CSS v4 installed (`npm install -D tailwindcss@next @tailwindcss/vite@next postcss autoprefixer --legacy-peer-deps`)
+    -   Node types installed (`npm install -D @types/node`)
+-   **Configuration:**
+    -   `tsconfig.json`: `baseUrl` and `paths` configured.
+    -   `tsconfig.app.json`: `baseUrl` and `paths` configured.
+    -   `vite.config.ts`: Tailwind CSS plugin and `tsconfigPaths` plugin added, resolve alias for `@` configured.
+    -   `src/index.css`: Cleaned and contains only `@import "tailwindcss";` (Shadcn init added more styles later).
+    -   `index.html`: `<html class="dark">` added.
+-   **ShadCN UI:**
+    -   Initialized successfully (`npx shadcn@latest init`), handling React 19 peer deps.
+    -   Added `dashboard-01` component (`npx shadcn@latest add dashboard-01`), which installed numerous dependencies (`button`, `card`, `table`, `chart`, etc.) and created component files under `src/components` and `src/app/dashboard`.
+
+### Current State
+
+-   The project is successfully set up with the core technologies.
+-   ShadCN UI is integrated and the first complex component (`dashboard-01`) has been added.
+-   Documentation structure (`docs/`) created.
+
+### Next Planned Actions
+
+1.  Create/Update documentation files (`checkpoint.md`, `for_mehd.md`).
+2.  Add the `login-01` component using ShadCN CLI.
+3.  Set up basic routing (`react-router-dom`).
+4.  Implement the Login page using the `login-01` component.
+5.  Implement the Dashboard page using the `dashboard-01` component structure.
+6.  Set up state management (likely RTK Query based on previous context/rules).
 
 ## Project Setup Complete - April 6, 2024
 
@@ -701,6 +809,4 @@ No major issues are currently identified. The system is stable and functioning a
 - **API Call:** Corrected frontend POST request payload (`user_id`) to match backend serializer (`CustomerSerializer` using `PrimaryKeyRelatedField`).
 - **User Fetching:** Implemented backend filter (`UserViewSet.get_queryset`) and frontend logic to fetch and display only unassociated Users for selection in the "Add Customer" dialog.
 - **Deletion Behavior:**
-  - **API/Frontend:** Confirmed working correctly. Deleting a `Customer` via the API/frontend UI successfully deletes the associated `User` due to the explicit handling in `CustomerViewSet.destroy`.
-  - **Django Admin:** Cascade deletion **still fails** when deleting `Customer` via Admin UI. Associated `User` is orphaned. This is a known limitation, likely due to `auditlog` interference. Manual User deletion is required if using Admin for Customer deletion.
-- **Status:** Customer CRUD functionality via the primary frontend interface is now working correctly and aligns with backend constraints.
+  - **API/Frontend:** Confirmed working correctly. Deleting a `Customer`

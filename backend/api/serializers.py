@@ -27,11 +27,12 @@ class CustomerSerializer(serializers.ModelSerializer):
         source='user',
         write_only=True
     )
+    vehicle_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = Customer
-        fields = ['id', 'user', 'user_id', 'phone', 'address', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'user_id', 'phone', 'address', 'created_at', 'updated_at', 'vehicle_count']
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'vehicle_count']
         ref_name = 'CustomerFull'
 
 class CarSerializer(serializers.ModelSerializer):
@@ -165,7 +166,7 @@ class ServiceSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Service
-        fields = ['id', 'car', 'car_details', 'title', 'description', 'status', 
+        fields = ['id', 'car', 'car_id', 'car_details', 'title', 'description', 'status', 
                  'scheduled_date', 'completed_date', 'technician_notes', 
                  'service_mileage', 'service_type', 'service_type_id', 'is_routine_maintenance',
                  'service_items', 'created_at', 'updated_at', 'service_type_details']

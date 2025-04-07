@@ -1,5 +1,5 @@
 # API Documentation Guide
-## Updated: April 2nd, 2025
+## Updated: April 7th, 2025 (Reflecting Nginx Proxy)
 
 ## Overview
 
@@ -7,29 +7,29 @@ The ECAR Garage Management System provides a comprehensive REST API built with D
 
 ## Accessing API Documentation
 
-The API documentation is available through Swagger UI and ReDoc, which provide interactive ways to explore and test the API endpoints.
+The API documentation is available through Swagger UI and ReDoc, which provide interactive ways to explore and test the API endpoints. Access is now via the Nginx proxy running on port 80.
 
 ### Swagger UI
-- **URL**: http://localhost:8000/api/docs/
+- **URL**: http://localhost/api/docs/
 - Interactive documentation with request/response examples
 - Ability to test API endpoints directly from the browser
 - Authentication support using JWT tokens
 
 ### ReDoc
-- **URL**: http://localhost:8000/api/redoc/
+- **URL**: http://localhost/api/redoc/
 - More user-friendly documentation for reading
 - Better organization of endpoints by tags
 - Cleaner presentation of schemas and models
 
 ### Raw Swagger Definitions
-- **JSON**: http://localhost:8000/api/swagger.json
-- **YAML**: http://localhost:8000/api/swagger.yaml
+- **JSON**: http://localhost/api/swagger.json
+- **YAML**: http://localhost/api/swagger.yaml
 
 ## Authentication
 
 To use most API endpoints, you need to authenticate using JWT tokens:
 
-1. Obtain a token by making a POST request to `/api/auth/token/` with your credentials
+1. Obtain a token by making a POST request to `/api/auth/token/` with your credentials (using `username` and `password`).
 2. Include the token in the Authorization header: `Authorization: Bearer <your_token>`
 3. For token refresh, use `/api/auth/token/refresh/`
 
@@ -40,24 +40,24 @@ In Swagger UI, you can authenticate by:
 
 ## API Structure
 
-The API is organized into the following categories:
+The API is organized into the following categories (Note: Verify exact implementation via Swagger/ReDoc):
 
 ### Authentication Endpoints
-- `POST /api/auth/token/`: Obtain JWT token
+- `POST /api/auth/token/`: Obtain JWT token (Requires `username`, `password`)
 - `POST /api/auth/token/refresh/`: Refresh JWT token
 - `POST /api/auth/register/`: Register a new user
 - `POST /api/auth/change-password/`: Change password
 
 ### Customer Management
-- `GET /api/customers/`: List all customers
+- `GET /api/customers/`: List all customers (Assumed paginated, returns objects with `id`, `first_name`, `last_name`)
 - `POST /api/customers/`: Create a new customer
 - `GET /api/customers/{id}/`: Retrieve a specific customer
 - `PUT /api/customers/{id}/`: Update a customer
 - `DELETE /api/customers/{id}/`: Delete a customer
 
 ### Vehicle Management
-- `GET /api/cars/`: List all cars
-- `POST /api/cars/`: Register a new car
+- `GET /api/cars/`: List all cars (Observed paginated, returns objects with nested `customer: {id: number, ...}`)
+- `POST /api/cars/`: Register a new car (Expects `customer` field to be the customer ID number)
 - `GET /api/cars/{id}/`: Retrieve a specific car
 - `PUT /api/cars/{id}/`: Update a car
 - `DELETE /api/cars/{id}/`: Delete a car
@@ -114,7 +114,7 @@ The API is organized into the following categories:
 ## Using the API Documentation
 
 ### Testing Endpoints
-1. Navigate to http://localhost:8000/api/docs/
+1. Navigate to http://localhost/api/docs/
 2. Authenticate using the Authorize button
 3. Expand the endpoint you want to test
 4. Fill in the required parameters
@@ -122,7 +122,8 @@ The API is organized into the following categories:
 6. View the response
 
 ### Understanding Models
-Each API endpoint operates on specific data models. The models are documented in the "Schemas" section at the bottom of the Swagger UI page.
+Each API endpoint operates on specific data models. The models are documented in the "Schemas" section at the bottom of the Swagger UI / ReDoc pages. 
+**Important:** Verify the schemas shown in Swagger/ReDoc against the actual backend code (`serializers.py`, `models.py`) for accuracy, especially for nested relationships (e.g., `customer` field within `Vehicle` response).
 
 ### Error Handling
 API errors follow standard HTTP status codes:
@@ -216,13 +217,14 @@ Returns the service intervals applicable to a specific vehicle make and model, o
 ## Development and Testing
 
 ### Testing Tools
-- Swagger UI: Built-in testing capability
+- Swagger UI: Built-in testing capability (at `http://localhost/api/docs/`)
+- ReDoc: Documentation viewing (at `http://localhost/api/redoc/`)
 - Postman: More advanced API testing
 - curl: Command-line API testing
 
 ### Environment Configuration
-- Development: http://localhost:8000/api/
-- Production: https://ecar.tn/api/
+- Development (Local Docker w/ Nginx): `http://localhost/api/` 
+- Production: `https://ecar.tn/api/` (Example)
 
 ## Future API Enhancements
 
