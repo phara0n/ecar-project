@@ -1,0 +1,38 @@
+{
+  "sidebar": {
+    "title": "Auto Garage Pro",
+    "newService": "New Service",
+    "dashboard": "Dashboard",
+    "vehicles": "Vehicles",
+    "customers": "Customers",
+    "services": "Services",
+    "invoices": "Invoices",
+    "parts": "Parts",
+    "mechanics": "Mechanics",
+    "analytics": "Analytics",
+    "settings": "Settings",
+    "help": "Help",
+    "search": "Search",
+    "user": "John Mechanic" 
+  },
+  "login": {
+    "title": "Login",
+    "description": "Enter your login and password below to access your account",
+    "loginLabel": "Login",
+    "passwordLabel": "Password",
+    "forgotPassword": "Forgot your password?",
+    "submitButton": "Login",
+    "submitButtonLoading": "Logging in...",
+    "loginSuccess": "Login successful!",
+    "loginFailed": "Login failed. Please check your credentials."
+  },
+  "vehiclesPage": {
+    "title": "Vehicles",
+    "description": "Manage registered vehicles."
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "noResults": "No results."
+  }
+} 

@@ -1,0 +1,38 @@
+{
+  "sidebar": {
+    "title": "Auto Garage Pro",
+    "newService": "Nouveau Service",
+    "dashboard": "Tableau de bord",
+    "vehicles": "Véhicules",
+    "customers": "Clients",
+    "services": "Services",
+    "invoices": "Factures",
+    "parts": "Pièces",
+    "mechanics": "Mécaniciens",
+    "analytics": "Analyses",
+    "settings": "Paramètres",
+    "help": "Aide",
+    "search": "Recherche",
+    "user": "John Mécanicien"
+  },
+  "login": {
+    "title": "Connexion",
+    "description": "Entrez votre identifiant et mot de passe ci-dessous pour accéder à votre compte",
+    "loginLabel": "Identifiant",
+    "passwordLabel": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "submitButton": "Se connecter",
+    "submitButtonLoading": "Connexion en cours...",
+    "loginSuccess": "Connexion réussie !",
+    "loginFailed": "Échec de la connexion. Veuillez vérifier vos identifiants."
+  },
+  "vehiclesPage": {
+    "title": "Véhicules",
+    "description": "Gérer les véhicules enregistrés."
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "noResults": "Aucun résultat."
+  }
+} 
